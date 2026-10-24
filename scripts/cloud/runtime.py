@@ -130,6 +130,8 @@ def start() -> None:
         if port == frontend_port:
             raise RuntimeError("API and frontend require different ports.")
         with socket.socket() as probe:
+            # Ignore closed connections in TIME_WAIT; active listeners still reject bind.
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             probe.bind(("127.0.0.1", port))
         if not TOKEN.exists():
             private_write(TOKEN, "claw_" + secrets.token_hex(32) + "\n")
