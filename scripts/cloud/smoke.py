@@ -35,7 +35,7 @@ def seed() -> None:
         raise RuntimeError("File version did not advance.")
     api("PUT", file_path, {"content": "stale write"}, actor=actors[2],
         headers={"If-Match": str(version)}, expected=409)
-    history = api("GET", file_path + "/history")
+    history = api("GET", file_path + "/history")["history"]
     if not history:
         raise RuntimeError("No file history returned.")
     post = api("POST", "/posts", {"workshop": workshop,
