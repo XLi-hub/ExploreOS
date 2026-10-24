@@ -1,27 +1,49 @@
 {
-  "config_version": "0.1-draft",
+  "config_version": "0.2-draft",
   "status": "design_example_not_executable",
   "project": {
-    "name": "open-ended-exploration",
+    "name": "multi-agent-open-exploration",
     "question": "为什么自主代理的短期演示与长期使用之间会出现差距？",
     "interests": [
-      "可能的原因",
       "相互竞争的解释",
-      "实际实现中的证据",
-      "反例和可尝试的新方案"
+      "实际材料中的证据与反例",
+      "智能体交互产生的新方向"
     ],
     "language": "zh-CN",
     "timezone": "Asia/Shanghai"
   },
   "exploration": {
-    "workflow": "adaptive",
-    "initial_plan": "provisional",
+    "workflow": "adaptive_multi_agent",
+    "coordination": "shared_space_protocol",
+    "initial_directions": "agent_proposed",
     "allow_question_reframing": true,
+    "allow_direction_split_merge_pause_reopen": true,
     "allow_unresolved_questions": true,
     "experiments_required": false,
     "numeric_objective_required": false,
-    "active_agent_limit": 1,
     "round_policy": "bounded"
+  },
+  "agents": {
+    "count": 3,
+    "max_concurrent_invocations": 3,
+    "separate_sessions": true,
+    "persistent_identity": true,
+    "private_working_memory": true,
+    "initial_perspectives": "generated_and_revisable",
+    "fixed_domain_leader": false
+  },
+  "collaboration": {
+    "publish_initial_proposals_after": "all_returned_or_phase_timeout",
+    "initial_proposal_timeout_seconds": 120,
+    "peer_critique_enabled": true,
+    "share_findings": true,
+    "share_conditional_failures": true,
+    "record_influenced_by": true,
+    "direction_reorganization_enabled": true,
+    "existing_membership_changes_require": "affected_participant_acknowledgements",
+    "unresolved_change_policy": "preserve_current_membership_and_report",
+    "summarizer_selection": "rotating_participant",
+    "peer_agreement_is_evidence": false
   },
   "actions": {
     "allowed": [
@@ -37,19 +59,37 @@
       "prototype",
       "experiment"
     ],
-    "optional_tools_enabled": false
+    "optional_tools_enabled": false,
+    "source_access": "configured_paths_only",
+    "target_repository_writes_enabled": false,
+    "internal_state_and_artifact_writes_enabled": true
   },
   "resources": {
     "source_mode": "local_fixture",
     "agent_backend": "simulated",
     "paid_model_calls_enabled": false,
     "remote_compute_enabled": false,
-    "max_actions_per_round": 8,
+    "shared_round_budget": true,
+    "reserve_before_dispatch": true,
+    "max_heartbeat_cycles_per_round": 4,
+    "max_agent_invocations_per_round": 12,
+    "max_tool_calls_per_round": 12,
+    "max_tool_actions_per_heartbeat": 1,
     "max_wall_seconds_per_round": 600,
-    "max_paid_cost_usd_per_round": 0
+    "max_paid_cost_usd_per_round": 0,
+    "agent_call_budget_includes": [
+      "discussion",
+      "exploration",
+      "review",
+      "model_summary",
+      "retries"
+    ],
+    "exhausted_budget_export": "deterministic_from_saved_records"
   },
   "memory": {
     "persist_question_revisions": true,
+    "preserve_agent_cursors_and_work_summaries": true,
+    "preserve_discussion_and_direction_history": true,
     "preserve_sources_and_argument_links": true,
     "distinguish_fact_inference_and_idea": true,
     "project_state_path": ".research/",
@@ -62,21 +102,37 @@
       "json"
     ],
     "include": [
-      "new_findings",
       "changed_understanding",
+      "direction_progress",
+      "peer_influence_links",
+      "direction_changes",
       "counterevidence",
-      "open_questions",
+      "unresolved_disagreements",
       "next_directions",
-      "actual_actions"
+      "actual_usage"
     ]
+  },
+  "evaluation": {
+    "default_mode": "collaborative_multi_agent",
+    "available_modes": [
+      "single_agent",
+      "single_agent_multiple_perspectives",
+      "independent_multi_agent",
+      "collaborative_multi_agent"
+    ],
+    "all_modes_preserve_audit_and_recovery": true,
+    "comparison_uses_explicit_equal_budget_policy": true,
+    "fake_runs_validate_research_quality": false
   },
   "scheduling": {
     "enabled": false,
     "notifications_enabled": false
   },
   "notes": [
-    "此配置只是产品接口示例，当前没有解析器和执行命令。",
-    "模拟代理与固定资料包只验证机械流程，不证明研究质量。",
-    "真实使用需配置模型、资料或检索工具，以及明确的授权范围和预算。"
+    "此配置只是接口提案，当前没有解析器和执行命令。",
+    "三个模拟参与者仅用于机械测试；真实模型与材料实测才可验收探索质量。",
+    "每轮调用上限涵盖讨论、探索、评审、模型总结及重试；超额后只从已有记录导出。",
+    "同模型的不同会话不代表统计独立；同伴一致不自动构成外部证据。",
+    "真实使用需要配置模型、材料、工具与预算；本示例不会发起付费调用。"
   ]
 }

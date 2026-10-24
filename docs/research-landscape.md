@@ -1,106 +1,78 @@
-# 类似项目与候选底座
+# 类似项目与运行底座：按多智能体探索需求评估
 
-调研日期：2026-10-24。范围：公开的一手仓库、作者文档和部分源码。没有部署候选、调用付费模型或运行 GPU 实验。
+修订日期：2026-10-24。本文整理此前静态阅读与本次论文核对，不代表候选部署或性能验证。
 
-## 1. 需求变化后的选型重点
+## 1. 选型问题
 
-用户明确希望探索宽泛的开放问题。因此通用的长任务代理、项目记忆和研究工具，比自动训练模型或生成论文更接近首版。
+产品的重点是多个智能体如何共同探索：独立上下文、共享提案与经验、相互质疑、方向调整和持续记忆。
 
-先前调研的 AutoScientists 相关项目仍有价值，但主要作为可选实验能力和协作策略的参考。
+机制参考与运行底座分别评估。具备子代理、记忆或报告功能，只能成为候选线索，仍需检验是否允许本项目实现上述协议。
 
-“作者文档描述”“读过相应实现”和“本地跑通”是不同证据级别。以下没有本地跑通项。
+证据级别分别标明“作者资料描述”“已阅读部分实现”“本地验证”。当前没有候选完整跑通的结论。仓库功能和兼容性需要在 M0 对固定版本重新检查。
 
-## 2. 通用开放探索候选
+## 2. 核心机制参考
 
-| 项目 | 一手资料描述的能力 | 本次检查 | 与本产品的关系 |
+| 项目 | 已有阅读范围 | 对本项目的用途 | 待核实问题 |
 | --- | --- | --- | --- |
-| [DeerFlow](https://github.com/bytedance/deer-flow) | 通用长任务代理、工具、技能、沙箱、记忆和子代理 | 根 README、backend/README.md 与公开核心概念文档 | 优先评估完整工作台底座；验证部署代价和跨轮项目认识 |
-| [Deep Agents](https://github.com/langchain-ai/deepagents) | 可扩展代理 harness、文件上下文、子代理；基于 LangGraph 的持久化能力 | 根 README、包文档、官方概览 | 优先评估轻量运行底座；问题地图和产品交互仍需设计 |
-| [EvoScientist](https://github.com/EvoScientist/EvoScientist) | 多角色研究、跨会话记忆、技能积累、定时任务和 WebUI | README、版本说明 | 评估持续探索体验；需确认能否摆脱固定科学任务流程 |
-| [GPT Researcher](https://github.com/assafelovic/gpt-researcher) | 网页与本地资料研究、问题拆解、带引用报告、递归深度研究 | README、官方 Deep Research 发布说明 | 资料研究能力候选；验证持续课题与开放式重述的限制 |
-| 现有编码代理的轻量封装 | 借助现有文件与工具能力，增加项目认识、方向和来源记录 | 目前是本项目提出的替代方案，未实现 | 作为最小成本对照，不预设要构建完整代理平台 |
+| [AutoScientists](https://github.com/mims-harvard/AutoScientists) | 论文相关方法、消融、局限和实现附录；README、启动脚本、runbook 与部分参考文件 | 首要探索协议参考，迁移关系见单独文档 | 实际调用链、共享状态服务、协议哪些由程序强制；开放任务接口怎样替换 |
+| [AutoScientists-Codex](https://github.com/yptang98/AutoScientists-Codex) | README、适配脚本与测试 | 参考原协议与执行后端分离的适配方式 | 固定版本、运行前提、会话与恢复的真实范围 |
+| [EvoScientist](https://github.com/EvoScientist/EvoScientist) | README 与版本说明 | 比较协作、记忆及持续研究的产品取舍 | 方向是否由固定组织决定，能否支持开放问题及本项目协议 |
+| [Arbor](https://github.com/RUC-NLPIR/Arbor) | README 与公开结构说明 | 参考方向分叉和工作区隔离 | 其任务/评价边界与本项目是否兼容 |
 
-DeerFlow 是完整产品候选，Deep Agents 是代码运行底座候选，GPT Researcher 更接近资料研究组件。不能只比较功能勾选数就认为可直接互换。
+AutoScientists 作为核心机制来源进入 M0。是否直接采用其运行实现，仍取决于实际源码和最小验证，不能由论文机制价值直接推导。
 
-对“持久记忆”要分别核实：用户偏好、当前会话检查点、项目原始记录、可追溯研究认识。具备其中一种不意味着全部具备。
+## 3. 可评估的执行底座与工具组件
 
-## 3. 实验研究及可靠性参考
+| 候选 | 此前阅读范围 | 可评估用途 | 关键验证 |
+| --- | --- | --- | --- |
+| 现有编码代理的轻量适配 | 尚无本项目实现 | 提供模型会话、文件和工具能力，探索协议由项目层承载 | 独立会话、结构化输出、并发、退出和费用记录是否可控 |
+| [Deep Agents](https://github.com/langchain-ai/deepagents) | README、包文档、[官方概览](https://docs.langchain.com/oss/python/deepagents/overview) | 候选代理执行与上下文底座 | 共享空间协议、持久身份和检查点的所有权映射 |
+| [DeerFlow](https://github.com/bytedance/deer-flow) | README、后端说明与公开核心概念文档 | 候选完整运行/交互底座 | 是否能接入动态协作而不被既有主代理组织限制，以及依赖成本 |
+| [GPT Researcher](https://github.com/assafelovic/gpt-researcher) | README 与作者 Deep Research 说明 | 资料研究组件候选 | 来源与结果能否进入本项目共享记录；不以报告生成代替协作协议 |
+| [OpenResearch](https://github.com/alphaXiv/OpenResearch) | README、原生会话存储与 Windows 说明 | 可选代码/实验工具和记录能力 | 本地运行前提、进程与恢复接口；此前本机未配置 orx |
 
-| 项目 | 已查阅能力 | 使用建议 |
-| --- | --- | --- |
-| [AutoScientists](https://github.com/mims-harvard/AutoScientists) | Claude Code 子代理、ClawInstitute 协调、共享讨论与实验记录、方向重组 | 借鉴开放方向和经验共享，不把其实验优化结构变成通用任务门槛 |
-| [AutoScientists-Codex](https://github.com/yptang98/AutoScientists-Codex) | 固定版本运行时安装、诊断、Codex 指引和原版协议映射 | 若后续需要原版实验策略，可优先验证适配器 |
-| [OpenResearch](https://github.com/alphaXiv/OpenResearch) | 编码代理接入、本地实验记录、算力与产物管理 | 作为代码/实验工具候选；本机尚无 orx 命令 |
-| [Arbor](https://github.com/RUC-NLPIR/Arbor) | 假设树、独立 worktree、运行产物、恢复入口 | 借鉴方向分叉和版本隔离，勿把数值优化当通用开放探索评价 |
-| [AutoResearchClaw](https://github.com/aiming-lab/AutoResearchClaw) | 分阶段研究到论文、恢复、人工介入、结果与引用核验 | 当未来有报告/论文交付时评估，其固定阶段不是本项目默认路径 |
-| [ARC](https://github.com/JasonCodeMaker/Agentic-Research-Control-Panel) | 研究意图版本、运行记录、证据绑定与控制面板 | 借鉴事实记录和解释之间的边界 |
-| [R&D-Agent](https://github.com/microsoft/RD-Agent) | 数据驱动研究开发循环、场景实现与可视化记录 | 数据/模型研发分支的参考，非首版通用工作台优先项 |
+表中是评估方向，不是已经确认所有接口可用。M0 最多启动两个实际候选，避免先安装整套产品再发现核心协议无法接入。
 
-## 4. 读源码后需要保留的区别
+## 4. 其他工程参考
 
-### AutoScientists-Codex
+- [AutoResearchClaw](https://github.com/aiming-lab/AutoResearchClaw)：此前读取其研究到论文的流程说明，可参考阶段记录和失败处理。
+- [ARC](https://github.com/JasonCodeMaker/Agentic-Research-Control-Panel)：此前读取研究意图、证据和运行记录的组织方式。
+- [R&D-Agent](https://github.com/microsoft/RD-Agent)：此前读取数据驱动研发循环的场景说明。
 
-检查了独立适配脚本和测试文件。恢复准备命令主要补充运行指引和协调信息，并非完整的任意训练进程恢复机制。
+这些项目不因被列出就成为首版依赖。新增依赖需说明具体缺口、读取实际接口与许可，并验证升级成本。
 
-参考：
-- [适配脚本](https://github.com/yptang98/AutoScientists-Codex/blob/main/plugins/autoscientists-codex/skills/autoscientists-codex/scripts/autoscientists_codex.py)
-- [测试](https://github.com/yptang98/AutoScientists-Codex/blob/main/tests/test_adapter.py)
+## 5. 需要防止的错误等同
 
-### OpenResearch
+- 子代理委派能力，不直接等于自主形成和调整方向。
+- 持久聊天，不直接等于可追溯的共享研究记忆。
+- 一个恢复命令，不直接等于能接管任意外部运行进程。
+- 多人给出相同结论，不直接等于多份独立证据。
+- 更高实验效率，不直接等于更低模型费用或更短实测耗时。
 
-检查了文件树、原生会话存储实现和 Windows 说明。Windows 仍标为 Beta，文档列出远程控制、进程及退出行为的限制。
+此前读过的 [AutoScientists-Codex 适配脚本](https://github.com/yptang98/AutoScientists-Codex/blob/main/plugins/autoscientists-codex/skills/autoscientists-codex/scripts/autoscientists_codex.py) 与 [测试](https://github.com/yptang98/AutoScientists-Codex/blob/main/tests/test_adapter.py)，不能替代真实后端的恢复验证。
 
-参考：
-- [原生会话存储](https://github.com/alphaXiv/OpenResearch/blob/main/src/local/native_store.rs)
-- [Windows 文档](https://github.com/alphaXiv/OpenResearch/blob/main/docs/windows.md)
+此前读过的 [OpenResearch 会话存储](https://github.com/alphaXiv/OpenResearch/blob/main/src/local/native_store.rs) 与 [Windows 说明](https://github.com/alphaXiv/OpenResearch/blob/main/docs/windows.md)，也仅构成进一步核查入口。
 
-### DeerFlow 与 Deep Agents
+## 6. M0 的共同验证场景
 
-作者资料已明确区分工具、上下文、记忆和运行机制，这与本项目的模块边界接近。运行状态、项目知识和长期记忆仍需实际映射，不假设一套检查点能解决所有问题。
+三个智能体使用同一开放问题和固定材料包，分别形成初始方向，在共享记录中发布、互读、回应，并执行一个受同伴内容影响的行动。
 
-参考：
-- [DeerFlow 后端说明](https://github.com/bytedance/deer-flow/blob/main/backend/README.md)
-- [DeerFlow 核心概念](https://github.com/bytedance/deer-flow/blob/main/frontend/src/content/en/introduction/core-concepts.mdx)
-- [Deep Agents 官方概览](https://docs.langchain.com/oss/python/deepagents/overview)
-
-## 5. 评估方法
-
-优先做静态接口评估，再按可配置资源运行一到两个候选，不一次安装全部系统。
-
-两个对照问题：
-
-1. “为什么自主代理短期演示与长期使用之间有差距？”
-2. “有没有更适合开放探索的个人知识组织方式？”
-
-第一问适合因果解释与反例，第二问适合比较和创造性方案。测试中途追加一个新关注点，暂停并重启，再继续同一课题。
+过程中制造一次过期写入或参与者失败，再恢复。随后让参与者提出方向调整，保存确认、生效或未决记录。
 
 观察：
 
-- 能否从宽问题自主开始，而不要求用户先填完整计划。
-- 是否能改变问题拆解并保留旧认识。
-- 来源是否真正支持结论，推断是否标清。
-- 是否保存矛盾、未知与失败尝试。
-- 是否跨轮接续，避免重复检索和伪造记忆。
-- 工具失败和预算结束后状态是否准确。
-- 需要修改上游多少代码，升级时是否易维护。
-- Windows 环境需要哪些组件，能否形成稳定启动方式。
+- 会话、身份、局部工作记录是否真实分离。
+- 调度器是否只管理运行，研究决策是否有明确提案来源。
+- 读取游标、帖子、认领与方向变更能否持久化。
+- 模型、讨论、工具和重试是否进入统一用量记录。
+- 不替换大段上游内部代码时能否接入协议。
+- Windows 上启动、并发、退出和重启的实际行为。
+- 谁拥有运行状态，如何避免双重调度或双重事实来源。
 
-零费用模拟验证只覆盖记录、状态和导出；研究质量必须用真实模型/工具的实际结果评估。
-
-## 6. 当前结论
-
-暂定优先顺序：
-
-1. DeerFlow：先判断完整产品能否小改满足需求。
-2. Deep Agents 或现有代理轻量封装：作为依赖与定制成本较小的对照。
-3. EvoScientist：比较持续研究、记忆和技能的用户体验。
-4. GPT Researcher：需要强资料研究能力时评估为组件。
-5. AutoScientists / OpenResearch 等：以后进入实验、代码研发场景再选。
-
-这是基于当前阅读的工程判断，尚无运行成绩支持最终选型。下一步将结果写入独立决策记录，不直接宣布选定底座。
+相同材料、模型和预算用于对照。模拟代理可验证机制接口；真实互动和探索质量需另行运行。
 
 ## 7. 引入上游的方式
 
-在选择时记录仓库、固定 commit、实际读取的许可/通知文件，以及改动位置。优先组合和适配，避免把本仓库变成多个上游源码的混合副本。
+记录仓库、固定 commit、实际读取的许可与通知文件、依赖及改动位置。优先组合或小范围适配。
 
-AutoScientists-Codex 的作者也采用固定上游运行时与独立适配层分开的方式；这仅是一个工程参考，不替代对所选组件自身条款的核实。
+将候选结果写入独立选型 ADR，列出无法满足的需求和代价。当前没有预定 DeerFlow、Deep Agents 或独立自研为最终路线。
