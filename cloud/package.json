@@ -1,0 +1,12 @@
+{
+  "name": "autoscientists-cloud-runtime",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Isolated upstream coordination service for cloud development",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "clawinstitute": "0.1.3"
+  }
+}

@@ -2,11 +2,13 @@
 
 ## Scope and confirmed intent
 
-- Workspace: D:\autoscientist\autoscientists-engineering.
+- Current development is cloud-only. Write changes and deliver artifacts through GitHub/cloud workspaces; do not modify or place new files in the user's local D: checkout.
+- Resolve paths relative to the active cloud repository checkout; never hard-code a local Windows workspace.
 - The product is a multi-agent exploration system for broad, open-ended questions.
 - Multi-agent interaction is core to the first usable version. A single agent is a test baseline, not the primary product milestone.
 - Tasks need not have numeric objectives, datasets, experiments or paper deliverables.
-- The repository currently contains design drafts and a non-executable configuration example.
+- The repository provides a Linux cloud bootstrap for the real upstream service, design drafts and a non-executable exploration configuration. The full exploration runtime is not implemented.
+- Read CLOUD.md first for setup, service management and the actual bootstrap check commands.
 - Read README.md, docs/product-design.md, docs/architecture.md, docs/evaluation.md and the current milestone in docs/roadmap.md before implementation.
 - ADR 0002 supersedes ADR 0001; ADR 0003 refines the implementation route to upstream-first reuse. Preserve prior decisions as history.
 - Default to adapting AutoScientists + ClawInstitute. Read docs/upstream-reuse.md before adding a shared-state service, scheduler or UI; reuse existing capabilities and implement only verified gaps.
@@ -17,7 +19,7 @@
 
 - Use Chinese for product documents and English where useful for code identifiers.
 - Work in codex/ branches and preserve existing user edits.
-- For concurrent development, follow docs/development-workflow.md: one writing task per worktree/branch, explicit base commit and shared-interface ownership, review a fixed commit, and let one integrator manage merges. Do not create additional chats or change account settings without the user's request.
+- For concurrent cloud development, use isolated tasks and branches with explicit base commits and shared-interface ownership. Review fixed commits and use one integrator. Git worktrees are optional within a shared cloud host. Do not create additional chats or change account settings without the user's request.
 - Keep scope small; record consequential decisions in docs/decisions/.
 - Distinguish paper claims, code observations, local tests and design proposals.
 - Repository conventions do not introduce additional permission requirements.
@@ -44,7 +46,9 @@
 - Keep all evaluation configurations on the same audit and recovery infrastructure. Vary semantic sharing and collaboration independently.
 - Never mark a milestone complete solely because reports or source files exist.
 - Keep credentials, private materials and runtime outputs out of Git.
-- Examples default to zero paid API usage and zero remote compute.
+- Examples and bootstrap default to zero paid model usage and zero scientific compute. Running cloud development/CI is authorized; it does not authorize model calls or GPU jobs.
+- Bootstrap checks: bash scripts/cloud/setup.sh; .venv/bin/python scripts/cloud/runtime.py doctor; start; .venv/bin/python scripts/cloud/smoke.py seed; stop/start; smoke.py verify; stop. See CLOUD.md for full commands.
+- Never execute upstream runbook.md or launch.py just to install dependencies. Bootstrap only validates the upstream service; it is not M1 completion.
 
 ## Current next step
 

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "repository": "https://github.com/mims-harvard/AutoScientists.git",
+    "commit": "c71a92343b9a488ed10134be805845b9473ad18f"
+  },
+  "clawinstitute": {
+    "version": "0.1.3",
+    "tarball_sha256": "eac415f6626cee4f921404b5385d9d29316940f55fd86d9d838077dbbb557144"
+  },
+  "runtime": {
+    "node_minimum_major": 22,
+    "python_minimum": "3.11"
+  },
+  "stage": "cloud_bootstrap_no_model_execution"
+}
