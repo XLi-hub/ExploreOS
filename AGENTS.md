@@ -16,6 +16,7 @@
 
 - Use Chinese for product documents and English where useful for code identifiers.
 - Work in codex/ branches and preserve existing user edits.
+- For concurrent development, follow docs/development-workflow.md: one writing task per worktree/branch, explicit base commit and shared-interface ownership, review a fixed commit, and let one integrator manage merges. Do not create additional chats or change account settings without the user's request.
 - Keep scope small; record consequential decisions in docs/decisions/.
 - Distinguish paper claims, code observations, local tests and design proposals.
 - Repository conventions do not introduce additional permission requirements.

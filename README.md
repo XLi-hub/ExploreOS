@@ -50,6 +50,7 @@
 | [类似项目调研](docs/research-landscape.md) | 机制参考与运行底座的不同职责 |
 | [评测设计](docs/evaluation.md) | 协作收益、消融、成本和开放问题评价 |
 | [实施路线与验收](docs/roadmap.md) | 从机制核对到最小多智能体探索系统 |
+| [开发协作方式](docs/development-workflow.md) | 双账号、任务 worktree、集成评审与云端接入时机 |
 | [当前架构决策](docs/decisions/0002-multi-agent-exploration.md) | 多智能体成为核心、取代旧版产品顺序 |
 | [旧版决策](docs/decisions/0001-local-research-workbench.md) | 已被 ADR 0002 取代，保留历史 |
 | [配置示例](examples/project.example.json) | v0.2 接口提案，尚不可执行 |
