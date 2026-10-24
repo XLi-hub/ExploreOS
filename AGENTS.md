@@ -3,11 +3,12 @@
 ## Scope and confirmed intent
 
 - Current development is cloud-only. Write changes and deliver artifacts through GitHub/cloud workspaces; do not modify or place new files in the user's local D: checkout.
+- The product and intended repository name are ExploreOS. Read docs/product-core.md before extending the exploration protocol. The core is evidence-driven adaptive open exploration and reusable, qualified memory; generic subagent orchestration alone is not product acceptance.
 - Resolve paths relative to the active cloud repository checkout; never hard-code a local Windows workspace.
 - The product is a multi-agent exploration system for broad, open-ended questions.
 - Multi-agent interaction is core to the first usable version. A single agent is a test baseline, not the primary product milestone.
 - Tasks need not have numeric objectives, datasets, experiments or paper deliverables.
-- The repository provides a Linux cloud bootstrap, tracked ClawInstitute transaction patches, M0 API/model probes, design drafts and a non-executable exploration configuration. The full exploration runtime is not implemented.
+- The repository provides a Linux cloud bootstrap, tracked upstream patches and a bounded M1 exploration CLI with real-model cases. M1 is a review candidate, not proof of collaboration quality or long-term production readiness. The old examples/project.example.json remains a non-executable interface proposal.
 - Read CLOUD.md first for setup, service management and the actual bootstrap check commands.
 - Read README.md, docs/product-design.md, docs/architecture.md, docs/evaluation.md and the current milestone in docs/roadmap.md before implementation.
 - ADR 0002 supersedes ADR 0001; ADR 0003 refines the implementation route to upstream-first reuse. Preserve prior decisions as history.
@@ -52,4 +53,4 @@
 
 ## Current next step
 
-M0's scoped Linux/PGlite service and bounded real-model probes have passed; read docs/m0-validation.md for exact evidence and limits. Windows/WSL2 are outside the user-confirmed deployment scope. M1 is next: validate bounded native execution (prefer the upstream Claude Code route, evaluating DeepSeek compatibility), then adapt the open task/profile and three-participant roster. The pinned upstream contains no verified standalone Codex adapter. Preserve ClawInstitute as shared-content authority, address POST idempotency and unknown outcomes, and do not treat the M0 probe as the M1 runtime. Alternative substrates require a specific blocker and an ADR.
+M0 was merged into codex/open-exploration-design. M1 on codex/m1-open-exploration implements a bounded upstream launcher adapter, Claude Code/DeepSeek execution, publication recovery, revisioned questions and qualified indexed memory. Read docs/product-core.md, docs/m1-validation.md and docs/acceptance-guide.md. User review of content quality is pending. Next validate old failures/contests actually improving later actions on open tasks, freeze the protocol for M2 comparisons and measure convergence/cost as well as benefit. Preserve ClawInstitute as shared authority; do not replace the substrate or broaden tools without a verified need. Real calls require explicit budget; CI and default CLI are zero-model. Run the documented cloud checks plus python -m unittest discover -s tests -v with the owned API running. Actual GitHub slug remains autoscientists-engineering because repository rename was denied by the integration (403); product/package branding is ExploreOS.

@@ -51,7 +51,19 @@ if digest != pins['tarball_sha256']:
 PY
 mkdir -p "$PROJECT_ROOT/.runtime/clawinstitute"
 if [ -f "$PROJECT_ROOT/.runtime/clawinstitute/package.json" ] && ! cmp -s cloud/package.json "$PROJECT_ROOT/.runtime/clawinstitute/package.json"; then
-  echo "Runtime manifest changed; create a fresh cloud task or deliberately reconcile its dependency cache." >&2; exit 1
+  python3 - <<'PY'
+import json
+from pathlib import Path
+old=json.loads(Path('.runtime/clawinstitute/package.json').read_text())
+new=json.loads(Path('cloud/package.json').read_text())
+if old.get('name') not in ('autoscientists-cloud-runtime','exploreos-cloud-runtime'):
+    raise SystemExit('Unknown runtime manifest; preserve and reconcile its edits.')
+for data in (old,new):
+    data.pop('name',None)
+    data.pop('description',None)
+if old != new:
+    raise SystemExit('Runtime dependency manifest changed; preserve and reconcile its edits.')
+PY
 fi
 cp cloud/package.json "$PROJECT_ROOT/.runtime/clawinstitute/package.json"
 cp cloud/package-lock.json "$PROJECT_ROOT/.runtime/clawinstitute/package-lock.json"

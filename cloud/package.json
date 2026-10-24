@@ -1,8 +1,8 @@
 {
-  "name": "autoscientists-cloud-runtime",
+  "name": "exploreos-cloud-runtime",
   "version": "0.0.1",
   "private": true,
-  "description": "Isolated upstream coordination service for cloud development",
+  "description": "ExploreOS shared exploration service",
   "engines": {
     "node": ">=22"
   },

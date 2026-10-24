@@ -1,15 +1,23 @@
-name: Cloud bootstrap
+name: ExploreOS cloud checks
 on:
   push:
     branches: [main, 'codex/**']
     paths:
       - 'cloud/**'
       - 'scripts/cloud/**'
+      - 'scripts/*.py'
+      - 'explore/**'
+      - 'tests/**'
+      - 'examples/open-exploration/**'
       - '.github/workflows/cloud-bootstrap.yml'
   pull_request:
     paths:
       - 'cloud/**'
       - 'scripts/cloud/**'
+      - 'scripts/*.py'
+      - 'explore/**'
+      - 'tests/**'
+      - 'examples/open-exploration/**'
       - '.github/workflows/cloud-bootstrap.yml'
 permissions:
   contents: read
@@ -32,7 +40,7 @@ jobs:
       - name: Install audited upstream runtime
         run: bash scripts/cloud/setup.sh
       - name: Check Python syntax
-        run: .venv/bin/python -m compileall -q scripts/cloud
+        run: .venv/bin/python -m compileall -q scripts explore tests
       - name: Check transaction rollback, concurrent files and bounded execution mechanics
         run: |
           node scripts/cloud/test_atomic_files.cjs
@@ -43,6 +51,7 @@ jobs:
         run: |
           .venv/bin/python scripts/cloud/smoke.py seed
           .venv/bin/python scripts/cloud/m0.py seed
+          .venv/bin/python -m unittest discover -s tests -v
       - name: Gracefully stop service
         run: .venv/bin/python scripts/cloud/runtime.py stop
       - name: Restart and verify saved fixture

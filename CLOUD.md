@@ -1,13 +1,13 @@
 # 云端开发起步包
 
-本仓库提供 AutoScientists + ClawInstitute 的 Linux 云端环境、固定事务补丁与 M0 验收入口。限定结果见 [M0 验证记录](docs/m0-validation.md)；完整开放探索产品仍待 M1 实现。开发在云端，用户本机使用目标为双系统中的 Linux。
+本仓库提供 ExploreOS 的 Linux 云端环境、固定上游补丁和有限开放探索 CLI。当前是 M1 候选，实际能力与限制见 [M1 验证记录](docs/m1-validation.md)，使用从 [验收指南](docs/acceptance-guide.md) 开始。开发在云端，用户本机使用目标为双系统中的 Linux。
 
 ## 1. 环境配置
 
 | 项目 | 值 |
 | --- | --- |
 | GitHub 仓库 | XLi-hub/autoscientists-engineering |
-| 当前 M0 分支 | codex/m0-validation，基于 codex/open-exploration-design |
+| 当前 M1 分支 | codex/m1-open-exploration，基于已合入 M0 的 codex/open-exploration-design |
 | 系统 | Linux x64；CI 使用 Ubuntu 24.04 |
 | Python | 3.11 |
 | Node.js | 22 |
@@ -16,11 +16,11 @@
 | 默认服务 | 仅 ClawInstitute API，认证开启，独立开发数据库 |
 | 运行状态 | .runtime/；依赖虚拟环境为 .venv/，都不进入 Git |
 
-环境准备和后续任务应选择包含 M0 改动的分支或合并后的分支。是否已合入 main 以 GitHub 为准。
+环境准备应选择包含 M1 改动的分支或合并后的分支。M0 PR #2 已合入开发集成分支，不能据此假定 main 同步。产品已命名 ExploreOS，实际 GitHub 改名因集成权限 403 待仓库所有者在 Settings 完成。
 
 在 Codex Cloud 创建环境时选择此仓库，并可粘贴：
 
-> 请为这个仓库准备 Linux 云端开发环境。选择包含 M0 改动的分支；如果当前 checkout 有用户改动先保留，不强制覆盖。使用 Python 3.11 和 Node.js 22。读取 CLOUD.md，执行 bash scripts/cloud/setup.sh，再执行 doctor、start、smoke seed、m0 seed、stop、start、smoke verify、m0 verify、stop。安装阶段不启动研究代理，不需要模型密钥。把安装命令记录到 Install script，把服务启动和状态检查记录到 Start skill。确认检查结果后准备发布环境。
+> 请为这个仓库准备 Linux 云端开发环境。选择包含 M1 改动的分支；如果当前 checkout 有用户改动先保留，不强制覆盖。使用 Python 3.11 和 Node.js 22。读取 CLOUD.md，执行 bash scripts/cloud/setup.sh，再执行 doctor、start、smoke seed、m0 seed、stop、start、smoke verify、m0 verify、stop。安装阶段不启动研究代理，不需要模型密钥。把安装命令记录到 Install script，把服务启动和状态检查记录到 Start skill。确认检查结果后准备发布环境。
 
 安装入口：
 
@@ -43,7 +43,7 @@ bash scripts/cloud/setup.sh
 - pypi.org
 - files.pythonhosted.org
 
-若依赖需要额外下载域名，按失败日志添加对应目标；不要通过关闭 TLS 校验来绕过。此起步包不安装 Claude Code 或 Codex CLI，不复制本机登录目录，setup 不读取模型密钥。真实执行入口另行配置；单独授权的 M0 模型探针还需访问 api.deepseek.com。
+若依赖需要额外下载域名，按失败日志添加对应目标；不要通过关闭 TLS 校验来绕过。默认 setup 不安装模型 CLI，不复制本机登录目录，也不读取模型密钥。可选 bash scripts/cloud/setup_claude.sh 安装锁定的 Claude Code 2.1.310，仅在当前 checkout 使用；安装不调用模型。真实模型执行还需访问 api.deepseek.com 并显式提供预算。
 
 服务启动时在当前云任务内生成开发 token。不要在环境模板发布前启动并遗留一份要被不同任务共享的数据库/token；环境准备中的验证结束后应按第 5 节处理测试状态。
 
@@ -53,7 +53,7 @@ bash scripts/cloud/setup.sh
 2. 下载固定 AutoScientists commit 的稀疏工作副本，保留 README、启动/运行文档、requirements 和 system；不下载科学任务数据集。
 3. 创建独立 .venv，安装固定直接 Python 依赖。
 4. 校验已审阅 ClawInstitute 发布包 SHA-256，将固定 0.1.3 版本安装到 .runtime/clawinstitute。
-5. 核对修补前文件指纹并应用受版本控制的事务/条件写补丁；检查版本与入口，记录已安装 Python 包，不启动后台服务。
+5. 核对修补前文件指纹并应用受版本控制的事务/条件写及帖子幂等补丁；检查版本与入口，记录已安装 Python 包，不启动后台服务。
 
 固定版本见 [cloud/versions.json](cloud/versions.json)。上游副本只是忽略目录里的外部依赖，不是复制进本仓库的产品代码。修改上游时先形成可跟踪的覆盖/补丁方案，不能把唯一改动留在 .runtime。
 
@@ -69,6 +69,7 @@ JavaScript 直接与传递依赖使用已验证的 [完整 npm lock](cloud/packa
 .venv/bin/python scripts/cloud/runtime.py status
 .venv/bin/python scripts/cloud/smoke.py seed
 .venv/bin/python scripts/cloud/m0.py seed
+.venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python scripts/cloud/runtime.py stop
 .venv/bin/python scripts/cloud/runtime.py start
 .venv/bin/python scripts/cloud/smoke.py verify
@@ -96,20 +97,21 @@ smoke 本身不证明真实智能体交流或并发原子性。新增 m0 seed �
 
 研究结果需要独立导出和持久存储规划，不能把开发环境快照当作常驻研究服务。
 
-## 6. 下一开发任务与可选模型探针
+## 6. M1 使用与后续验证
 
-> 读取 docs/m0-validation.md，继续 M1：先验证 AutoScientists 原有 Claude Code 执行入口与 DeepSeek 兼容接口的预算、工具权限和取消边界，再实现开放任务分支与三人名册。保留 ClawInstitute 为共享内容权威，处理帖子幂等和未知结果。固定上游未找到独立 Codex 适配器；不要以模型供应商的 Codex 接入文档代替上游执行兼容性验收，不启动原 runbook 的无限循环。
+M1 的机械测试、任意开放问题、暂停改向、材料增补、质疑、有限追加轮次与真实模型入口见 [验收指南](docs/acceptance-guide.md)。默认 advance 使用模拟代理，始终标记为机械运行；真实后端必须用新项目，不能与模拟结果混用。
 
-M0 真实模型探针是单独命令，不进入 setup 或 CI。获得明确模型预算后，在已启动服务的终端执行：
+下一重点是抽查来源支持范围，并验证早期失败/争议在后续行动中有用；冻结协议后做等预算重复评测。现有真实交互、恢复和记忆取回不等同于协作收益已获证明。
+
+M0 探针保留为历史入口。在已有结果的开发环境只需 verify，不会追加调用：
 
 ~~~bash
-.venv/bin/python scripts/cloud/m0_live.py live --budget-cny 5
 .venv/bin/python scripts/cloud/m0_live.py verify
 ~~~
 
-密钥来自云环境的 DEEPSEEK_API_KEY，未配置时隐藏输入。不要将真实密钥写入命令行、Git 或环境模板文本。最多九次请求、两路并发，预算是按保守费率预留的准入限额；供应商实际账单另查。未知调用保留预留且不自动重试，已有 ledger 阻止重复 live。查看已有结果使用 verify，不会追加模型调用。
+新 M0 live 必须另行提供明确预算；密钥取自 DEEPSEEK_API_KEY 或隐藏输入。M1 共享预算池保留当前开发的历史预留，不因新项目或追加轮次而重置。预算准入记账不是供应商实际账单。未知请求保留额度，不盲重试。
 
-CI 定义：[Cloud bootstrap](.github/workflows/cloud-bootstrap.yml)。它安装锁定依赖并执行数据库故障、并发、API 与优雅重启检查；服务日志留在私有目录，不上传含 token 的原始日志，也不使用模型密钥。
+CI 定义：[ExploreOS cloud checks](.github/workflows/cloud-bootstrap.yml)。它执行固定依赖安装、数据库故障、并发、探索机制、API 与优雅重启检查；不安装可选模型 CLI，不使用模型密钥，不发起模型调用。服务日志和私有研究产物不会上传。
 
 ## 7. 官方配置参考
 
