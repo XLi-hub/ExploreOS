@@ -6,7 +6,7 @@
 
 产品的重点是多个智能体如何共同探索：独立上下文、共享提案与经验、相互质疑、方向调整和持续记忆。
 
-机制参考与运行底座分别评估。具备子代理、记忆或报告功能，只能成为候选线索，仍需检验是否允许本项目实现上述协议。
+默认先复用 AutoScientists + ClawInstitute。其他项目作为适配参考与具体缺口的备选，不再与原生路线平行搭建整套平台。具备子代理、记忆或报告功能，只能成为候选线索。
 
 证据级别分别标明“作者资料描述”“已阅读部分实现”“本地验证”。当前没有候选完整跑通的结论。仓库功能和兼容性需要在 M0 对固定版本重新检查。
 
@@ -15,11 +15,12 @@
 | 项目 | 已有阅读范围 | 对本项目的用途 | 待核实问题 |
 | --- | --- | --- | --- |
 | [AutoScientists](https://github.com/mims-harvard/AutoScientists) | 论文相关方法、消融、局限和实现附录；README、启动脚本、runbook 与部分参考文件 | 首要探索协议参考，迁移关系见单独文档 | 实际调用链、共享状态服务、协议哪些由程序强制；开放任务接口怎样替换 |
+| ClawInstitute 本地 npm 包 | 0.1.3 包内 README、许可、启动、workspace/DB/auth 实现 | 默认共享服务与已有前端，详见[复用核对](upstream-reuse.md) | 条件写竞态、持久化、平台/前端兼容性与开放内容映射；GitHub 仓库本次返回 404 |
 | [AutoScientists-Codex](https://github.com/yptang98/AutoScientists-Codex) | README、适配脚本与测试 | 参考原协议与执行后端分离的适配方式 | 固定版本、运行前提、会话与恢复的真实范围 |
 | [EvoScientist](https://github.com/EvoScientist/EvoScientist) | README 与版本说明 | 比较协作、记忆及持续研究的产品取舍 | 方向是否由固定组织决定，能否支持开放问题及本项目协议 |
 | [Arbor](https://github.com/RUC-NLPIR/Arbor) | README 与公开结构说明 | 参考方向分叉和工作区隔离 | 其任务/评价边界与本项目是否兼容 |
 
-AutoScientists 作为核心机制来源进入 M0。是否直接采用其运行实现，仍取决于实际源码和最小验证，不能由论文机制价值直接推导。
+AutoScientists + ClawInstitute 作为默认实现路线进入 M0。静态检查已确认部分可复用能力，也发现具体缺口；最小运行验证仍未完成。默认路线并不等于兼容性已验收。
 
 ## 3. 可评估的执行底座与工具组件
 
@@ -31,7 +32,7 @@ AutoScientists 作为核心机制来源进入 M0。是否直接采用其运行�
 | [GPT Researcher](https://github.com/assafelovic/gpt-researcher) | README 与作者 Deep Research 说明 | 资料研究组件候选 | 来源与结果能否进入本项目共享记录；不以报告生成代替协作协议 |
 | [OpenResearch](https://github.com/alphaXiv/OpenResearch) | README、原生会话存储与 Windows 说明 | 可选代码/实验工具和记录能力 | 本地运行前提、进程与恢复接口；此前本机未配置 orx |
 
-表中是评估方向，不是已经确认所有接口可用。M0 最多启动两个实际候选，避免先安装整套产品再发现核心协议无法接入。
+表中是此前整理的备选，并非并行开发计划。M0 先验证原生路线和已有 Codex 适配；只有具体缺口需要时，才评估对应组件，不启动第二套完整协作平台。
 
 ## 4. 其他工程参考
 
@@ -75,4 +76,4 @@ AutoScientists 作为核心机制来源进入 M0。是否直接采用其运行�
 
 记录仓库、固定 commit、实际读取的许可与通知文件、依赖及改动位置。优先组合或小范围适配。
 
-将候选结果写入独立选型 ADR，列出无法满足的需求和代价。当前没有预定 DeerFlow、Deep Agents 或独立自研为最终路线。
+默认路线已由 ADR 0003 明确为 AutoScientists + ClawInstitute。验证时记录保留与局部改造清单；若具体组件必须替换，再写 ADR 列出阻塞、无法满足的需求与代价。

@@ -8,7 +8,8 @@
 - Tasks need not have numeric objectives, datasets, experiments or paper deliverables.
 - The repository currently contains design drafts and a non-executable configuration example.
 - Read README.md, docs/product-design.md, docs/architecture.md, docs/evaluation.md and the current milestone in docs/roadmap.md before implementation.
-- ADR 0002 supersedes ADR 0001. Preserve the old decision as history.
+- ADR 0002 supersedes ADR 0001; ADR 0003 refines the implementation route to upstream-first reuse. Preserve prior decisions as history.
+- Default to adapting AutoScientists + ClawInstitute. Read docs/upstream-reuse.md before adding a shared-state service, scheduler or UI; reuse existing capabilities and implement only verified gaps.
 - The original 日常探索模式 conversation body has not been retrieved. Do not invent its contents.
 - User instructions in the active session take precedence over these conventions.
 
@@ -47,4 +48,4 @@
 
 ## Current next step
 
-M0: map AutoScientists paper mechanisms to actual source paths and state ownership, then compare an adaptation of its protocol with a small shared-space protocol around an existing agent runtime. Test at most two substrate candidates with the same minimal multi-agent scenario. Evaluate independent contexts, peer influence, direction changes, durable claims, costs and Windows operation. Do not select a substrate solely for its UI or generic subagent feature.
+M0: validate the pinned AutoScientists + ClawInstitute chain first. Check API/file history, concurrency gaps, durability and Windows/WSL2/Linux operation; map open-ended task profile hooks, hardcoded roles and the existing Codex adapter. Preserve shared state in ClawInstitute, avoid duplicate authorities, and adapt only necessary gaps. Alternative substrates require evidence of a specific blocker and an ADR. Static inspection is not runtime acceptance.

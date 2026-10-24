@@ -2,6 +2,7 @@
 
 日期：2026-10-24。
 状态：产品方向已确认；具体协议与技术底座仍为提案。
+实现路线更新：遵循 [ADR 0003](0003-upstream-first.md)，默认增量复用 AutoScientists + ClawInstitute；本文的开放式底座比较不再是当前实施顺序。
 取代：[ADR 0001](0001-local-research-workbench.md)。
 
 ## 背景

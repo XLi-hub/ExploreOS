@@ -2,7 +2,7 @@
 
 面向开放问题的多智能体探索系统：多个智能体提出方向、交换证据、相互质疑、调整分工，并积累能够接续的共同认识。ExploreOS 为暂定产品名，仓库名称保持不变。
 
-**状态：设计草案 v0.2，2026-10-24。当前只有文档与配置示例，没有可运行系统。**
+**状态：设计草案 v0.3，2026-10-24。当前只有文档与配置示例，没有可运行系统。**
 
 ## 已确认的方向
 
@@ -26,7 +26,7 @@
                     ↓
     阶段简报与可继续的项目记录
 
-探索方向由智能体交互形成。程序内核管理调用、并发、权限、预算和状态一致性。首版采用小规模、可重组的协作协议；协议设计与具体代理运行底座分别验证。
+默认沿用 AutoScientists + ClawInstitute，在已有 workshop、workspace、讨论、心跳和共享记录上做开放任务适配。先验证上游链路，补齐必要缺口；不先重建协作服务或完整界面。研究方向由智能体交互形成，协调层管理调用与执行边界。详见[复用核对](docs/upstream-reuse.md)。
 
 ## 首版必须证明什么
 
@@ -47,11 +47,13 @@
 | [产品设计](docs/product-design.md) | 多智能体探索的用户体验、交互与首版边界 |
 | [系统架构](docs/architecture.md) | 共享空间、心跳、协作协议、并发与恢复 |
 | [AutoScientists 机制迁移](docs/autoscientists-transfer.md) | 原论文依据、泛化方案和待核对实现 |
+| [上游复用核对](docs/upstream-reuse.md) | AutoScientists + ClawInstitute 的源码依据、可用能力和已知缺口 |
 | [类似项目调研](docs/research-landscape.md) | 机制参考与运行底座的不同职责 |
 | [评测设计](docs/evaluation.md) | 协作收益、消融、成本和开放问题评价 |
 | [实施路线与验收](docs/roadmap.md) | 从机制核对到最小多智能体探索系统 |
 | [开发协作方式](docs/development-workflow.md) | 双账号、任务 worktree、集成评审与云端接入时机 |
-| [当前架构决策](docs/decisions/0002-multi-agent-exploration.md) | 多智能体成为核心、取代旧版产品顺序 |
+| [当前复用决策](docs/decisions/0003-upstream-first.md) | 默认沿用 AutoScientists + ClawInstitute，优先局部适配 |
+| [产品核心决策](docs/decisions/0002-multi-agent-exploration.md) | 多智能体成为核心、取代旧版产品顺序 |
 | [旧版决策](docs/decisions/0001-local-research-workbench.md) | 已被 ADR 0002 取代，保留历史 |
 | [配置示例](examples/project.example.json) | v0.2 接口提案，尚不可执行 |
 | [开发协作约定](AGENTS.md) | 后续开发与验证规则 |
@@ -61,7 +63,7 @@
 - [x] 建立 D 盘工作区并连接 GitHub。
 - [x] 确认宽泛开放问题与多智能体协同探索的核心定位。
 - [x] 阅读 AutoScientists 论文相关方法、实验、消融和实现附录，修订设计。
-- [ ] 完成 M0 的源码调用链核对和最小底座验证。
+- [ ] 完成 M0 的原生调用链、平台、并发和开放任务适配验证。
 - [ ] 实现并验收 M1 多智能体探索闭环。
 - [ ] 用固定材料与真实问题评估协作收益。
 

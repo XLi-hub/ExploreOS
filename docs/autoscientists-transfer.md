@@ -1,6 +1,6 @@
 # AutoScientists 机制迁移：论文依据与实现核对
 
-状态：设计分析 v0.2，2026-10-24。下列迁移建议尚未实现。
+状态：设计分析 v0.3，2026-10-24。默认直接适配 AutoScientists + ClawInstitute，下列改造尚未运行验收。
 
 ## 1. 来源与证据边界
 
@@ -8,7 +8,8 @@
 
 - [论文原文](https://arxiv.org/html/2605.28655v1)：方法 §3、消融 §4.5、局限 §5、实现附录 A、规模分析附录 B。
 - [作者仓库](https://github.com/mims-harvard/AutoScientists)：既往读取过 README、launch.py、runbook.md 和部分参考文档。
-- [launch.py](https://github.com/mims-harvard/AutoScientists/blob/c71a92343b9a488ed10134be805845b9473ad18f454291dc/launch.py) 与 [runbook.md](https://github.com/mims-harvard/AutoScientists/blob/c71a92343b9a488ed10134be805845b9473ad18f454291dc/runbook.md)：既往检查的源码快照入口；M0 应再次核对所选版本与依赖。
+- [launch.py](https://github.com/mims-harvard/AutoScientists/blob/c71a92343b9a488ed10134be805845b9473ad18f/launch.py) 与 [runbook.md](https://github.com/mims-harvard/AutoScientists/blob/c71a92343b9a488ed10134be805845b9473ad18f/runbook.md)：本次重新核对入口及真实 commit，修正旧文中的无效快照链接。
+- ClawInstitute npm 发布包 0.1.3：已静态读取共享文件、版本、数据库和认证等实现；范围、文件定位与校验值见[复用核对](upstream-reuse.md)。
 
 论文描述、源码实现和本地运行验证分开记录。本文没有宣称已经跑通上游，也没有把论文中的协议要求当成程序必然强制的保证。
 
@@ -54,8 +55,8 @@
 
 ## 5. 复用决策原则
 
-优先保留可解释的协作机制：提案、互评、共享经验、方向重组和跨轮接续。调度、模型会话和工具执行可以采用经验证的现有实现。
+优先复用实际实现：ClawInstitute 的共享服务、已有界面和记录能力，以及 AutoScientists 的任务 profile、心跳、讨论、组队与记忆布局。开放问题所需语义通过任务文件和局部覆盖表达，避免另建完整共享平台。
 
-原始系统的评测依赖与科学任务接口按需适配。完整复制上游或完全重建通用运行时，都需有成本和能力证据支持。
+先验证原链路，再按已观察到的缺口处理角色/GPU/指标硬编码、执行后端、调用预算、并发与恢复。具体事实和待验收项见复用核对；默认路线见 [ADR 0003](decisions/0003-upstream-first.md)。
 
-M0 最终给出“直接复用 / 适配 / 自建最小层”的具体路径与所有权映射，另记选型 ADR。本文仅明确产品机制，不替代选型结果。
+M0 输出保留、局部适配与必须补齐的清单。替换组件需要具体阻塞证据与 ADR，不再默认同时搭建另一套通用运行底座。
