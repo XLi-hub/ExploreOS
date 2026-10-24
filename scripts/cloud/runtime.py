@@ -106,9 +106,11 @@ def doctor() -> None:
         raise RuntimeError("ClawInstitute version mismatch.")
     if not (source / "runbook.md").is_file() or not (source / "system").is_dir():
         raise RuntimeError("Upstream sparse checkout is incomplete.")
+    from patch_upstream import check_or_apply
+    check_or_apply(check=True)
     print(json.dumps({"python": sys.version.split()[0], "node": version,
                       "upstream": sha, "clawinstitute": package["version"],
-                      "research_agents_started": False}, indent=2))
+                      "atomic_file_patch": True, "research_agents_started": False}, indent=2))
 
 
 def start() -> None:

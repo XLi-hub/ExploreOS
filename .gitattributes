@@ -1,0 +1,2 @@
+# Empty context lines in unified patches intentionally contain a space.
+cloud/patches/*.patch -whitespace

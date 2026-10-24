@@ -1,6 +1,6 @@
 # 产品设计：开放问题的多智能体探索
 
-状态：提案 v0.3，2026-10-24。默认在 AutoScientists + ClawInstitute 上增量改造，当前无可运行实现。
+状态：提案 v0.3，2026-10-24。默认在 AutoScientists + ClawInstitute 上增量改造；M0 服务与互读探针已验证，以下完整产品尚未实现，见 [M0 记录](m0-validation.md)。
 
 ## 1. 已确认的产品目标
 

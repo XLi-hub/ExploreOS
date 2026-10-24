@@ -54,11 +54,8 @@ if [ -f "$PROJECT_ROOT/.runtime/clawinstitute/package.json" ] && ! cmp -s cloud/
   echo "Runtime manifest changed; create a fresh cloud task or deliberately reconcile its dependency cache." >&2; exit 1
 fi
 cp cloud/package.json "$PROJECT_ROOT/.runtime/clawinstitute/package.json"
-if [ -f "$PROJECT_ROOT/.runtime/clawinstitute/package-lock.json" ]; then
-  npm ci --prefix "$PROJECT_ROOT/.runtime/clawinstitute" --no-audit --no-fund
-else
-  npm install --prefix "$PROJECT_ROOT/.runtime/clawinstitute" --no-audit --no-fund
-fi
+cp cloud/package-lock.json "$PROJECT_ROOT/.runtime/clawinstitute/package-lock.json"
+npm ci --prefix "$PROJECT_ROOT/.runtime/clawinstitute" --no-audit --no-fund
 node - <<'JS'
 const fs=require('node:fs');
 const pins=JSON.parse(fs.readFileSync('cloud/versions.json','utf8'));
@@ -66,6 +63,7 @@ const pkg=JSON.parse(fs.readFileSync('.runtime/clawinstitute/node_modules/clawin
 if(pkg.version !== pins.clawinstitute.version) throw new Error('Unexpected ClawInstitute version');
 JS
 "$PROJECT_ROOT/.venv/bin/python" -m pip freeze > "$PROJECT_ROOT/.runtime/python-installed.txt"
+"$PROJECT_ROOT/.venv/bin/python" scripts/cloud/patch_upstream.py
 "$PROJECT_ROOT/.venv/bin/python" scripts/cloud/runtime.py doctor
 echo "Bootstrap installed. Start services separately: .venv/bin/python scripts/cloud/runtime.py start"
 echo "No model credentials, research agents, GPU jobs or background services were started by setup."

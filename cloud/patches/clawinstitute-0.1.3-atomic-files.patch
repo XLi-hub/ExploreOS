@@ -1,0 +1,162 @@
+--- a/src/db/client.js
++++ b/src/db/client.js
+@@ -100,4 +100,25 @@
+   _mode = null;
+ }
+ 
+-module.exports = { getClient, query, exec, close, mode: () => _mode };
++// A transaction owns one connection. Never issue BEGIN/COMMIT through a pool,
++// or through PGlite's shared query entry point where other requests can interleave.
++async function transaction(fn) {
++  const c = await getClient();
++  if (_mode === 'pglite') {
++    return c.transaction(tx => fn((sql, params = []) => tx.query(sql, params)));
++  }
++  const connection = await c.connect();
++  try {
++    await connection.query('BEGIN');
++    const result = await fn((sql, params = []) => connection.query(sql, params));
++    await connection.query('COMMIT');
++    return result;
++  } catch (error) {
++    await connection.query('ROLLBACK');
++    throw error;
++  } finally {
++    connection.release();
++  }
++}
++
++module.exports = { getClient, query, exec, close, transaction, mode: () => _mode };
+--- a/src/services/WorkspaceFileService.js
++++ b/src/services/WorkspaceFileService.js
+@@ -1,6 +1,6 @@
+ 'use strict';
+ 
+-const { query } = require('../db/client.js');
++const { query, transaction } = require('../db/client.js');
+ const { NotFoundError, ConflictError, BadRequestError } = require('../utils/errors.js');
+ 
+ // Validate and normalize file paths used as the (workspace_id, path) key.
+@@ -117,17 +117,21 @@
+ }
+ 
+ // Internal: fetch raw row with snake_case columns for snapshot work.
+-async function _fetchRaw(workspaceId, path) {
+-  const result = await query(
++async function _fetchRaw(workspaceId, path, runQuery = query, lock = false) {
++  const result = await runQuery(
+     `SELECT id, path, content, version, updated_by, updated_at
+      FROM ws_workspace_files
+-     WHERE workspace_id = $1 AND path = $2`,
++     WHERE workspace_id = $1 AND path = $2${lock ? " FOR UPDATE" : ""}`,
+     [workspaceId, path]
+   );
+   return result.rows[0] || null;
+ }
+ 
+ async function write(workspaceId, path, content, updatedBy, expectedVersion) {
++  return transaction(runQuery => _write(workspaceId, path, content, updatedBy, expectedVersion, runQuery));
++}
++
++async function _write(workspaceId, path, content, updatedBy, expectedVersion, query) {
+   path = validateFilePath(path);
+   if (content === undefined || content === null) {
+     throw new BadRequestError('content is required');
+@@ -143,7 +147,7 @@
+   if (content.includes('\0')) {
+     throw new BadRequestError('File content contains null bytes; binary content not supported');
+   }
+-  const existing = await _fetchRaw(workspaceId, path);
++  const existing = await _fetchRaw(workspaceId, path, query, true);
+   if (existing) {
+     if (expectedVersion !== null && expectedVersion !== undefined && existing.version !== expectedVersion) {
+       const err = new ConflictError('Version mismatch - file was updated by another agent');
+@@ -171,33 +175,48 @@
+     await query('UPDATE ws_workspaces SET updated_at = NOW() WHERE id = $1', [workspaceId]);
+     return { path, version: upd.rows[0].version, updatedAt: upd.rows[0].updatedAt, updatedBy: upd.rows[0].updatedBy };
+   }
+-  // New file
++  // Version zero means create-only; a positive version requires an existing file.
++  if (expectedVersion !== null && expectedVersion !== undefined && expectedVersion !== 0) {
++    const err = new ConflictError('Version mismatch - file does not exist');
++    err.currentVersion = 0;
++    throw err;
++  }
++  // Concurrent creates have no row to lock; let the unique key arbitrate.
+   const ins = await query(
+     `INSERT INTO ws_workspace_files (workspace_id, path, content, version, created_by, updated_by)
+      VALUES ($1, $2, $3, 1, $4, $4)
++     ON CONFLICT (workspace_id, path) DO NOTHING
+      RETURNING path, version, created_at AS "createdAt", updated_at AS "updatedAt"`,
+     [workspaceId, path, content, updatedBy || null]
+   );
++  if (!ins.rows.length) {
++    const current = await _fetchRaw(workspaceId, path, query);
++    const err = new ConflictError('File was created concurrently; reread before retrying');
++    err.currentVersion = current ? current.version : 0;
++    throw err;
++  }
+   await query('UPDATE ws_workspaces SET updated_at = NOW() WHERE id = $1', [workspaceId]);
+   return { path: ins.rows[0].path, version: ins.rows[0].version, updatedAt: ins.rows[0].updatedAt };
+ }
+ 
+ async function patchFrontmatter(workspaceId, path, frontmatterPatch, updatedBy, expectedVersion) {
+-  path = validateFilePath(path);
+-  if (!frontmatterPatch || typeof frontmatterPatch !== 'object') {
+-    throw new BadRequestError('frontmatter patch object is required');
+-  }
+-  const existing = await _fetchRaw(workspaceId, path);
+-  if (!existing) throw new NotFoundError('File');
+-  if (expectedVersion !== null && expectedVersion !== undefined && existing.version !== expectedVersion) {
+-    const err = new ConflictError('Version mismatch');
+-    err.currentVersion = existing.version;
+-    throw err;
+-  }
+-  const { frontmatter, body } = parseFrontmatter(existing.content);
+-  applyDotPatch(frontmatter, frontmatterPatch);
+-  const newContent = serializeFrontmatter(frontmatter, body);
+-  return write(workspaceId, path, newContent, updatedBy, null);
++  return transaction(async query => {
++    path = validateFilePath(path);
++    if (!frontmatterPatch || typeof frontmatterPatch !== 'object') {
++      throw new BadRequestError('frontmatter patch object is required');
++    }
++    const existing = await _fetchRaw(workspaceId, path, query, true);
++    if (!existing) throw new NotFoundError('File');
++    if (expectedVersion !== null && expectedVersion !== undefined && existing.version !== expectedVersion) {
++      const err = new ConflictError('Version mismatch');
++      err.currentVersion = existing.version;
++      throw err;
++    }
++    const { frontmatter, body } = parseFrontmatter(existing.content);
++    applyDotPatch(frontmatter, frontmatterPatch);
++    const newContent = serializeFrontmatter(frontmatter, body);
++    return _write(workspaceId, path, newContent, updatedBy, expectedVersion, query);
++  });
+ }
+ 
+ async function history(workspaceId, path, limit, offset) {
+--- a/src/routes/workspaces.js
++++ b/src/routes/workspaces.js
+@@ -508,12 +508,20 @@
+         finalContent = `---\n${lines.join('\n')}\n---\n${content}`;
+       }
+     }
+-    const expectedVersion = parseIfMatch(req.headers['if-match']);
++    let expectedVersion = parseIfMatch(req.headers['if-match']);
+     if (expectedVersion === undefined) {
+       return res.status(400).json({
+         error: 'If-Match header must be a non-negative integer',
+         code: 'BAD_REQUEST',
+       });
++    }
++    // AutoScientists uses this header for its shared baseline lock.
++    // Translate only create-if-absent into the same transactional version-zero path.
++    if (req.headers['if-none-match'] !== undefined) {
++      if (req.headers['if-none-match'] !== '*' || req.headers['if-match'] !== undefined) {
++        return res.status(400).json({ error: 'Use only If-None-Match: * or If-Match', code: 'BAD_REQUEST' });
++      }
++      expectedVersion = 0;
+     }
+     const agentName = req.headers['x-agent-name'] || null;
+     const result = await WorkspaceFileService.write(

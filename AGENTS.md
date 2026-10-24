@@ -7,7 +7,7 @@
 - The product is a multi-agent exploration system for broad, open-ended questions.
 - Multi-agent interaction is core to the first usable version. A single agent is a test baseline, not the primary product milestone.
 - Tasks need not have numeric objectives, datasets, experiments or paper deliverables.
-- The repository provides a Linux cloud bootstrap for the real upstream service, design drafts and a non-executable exploration configuration. The full exploration runtime is not implemented.
+- The repository provides a Linux cloud bootstrap, tracked ClawInstitute transaction patches, M0 API/model probes, design drafts and a non-executable exploration configuration. The full exploration runtime is not implemented.
 - Read CLOUD.md first for setup, service management and the actual bootstrap check commands.
 - Read README.md, docs/product-design.md, docs/architecture.md, docs/evaluation.md and the current milestone in docs/roadmap.md before implementation.
 - ADR 0002 supersedes ADR 0001; ADR 0003 refines the implementation route to upstream-first reuse. Preserve prior decisions as history.
@@ -52,4 +52,4 @@
 
 ## Current next step
 
-M0: validate the pinned AutoScientists + ClawInstitute chain first. Check API/file history, concurrency gaps, durability and Windows/WSL2/Linux operation; map open-ended task profile hooks, hardcoded roles and the existing Codex adapter. Preserve shared state in ClawInstitute, avoid duplicate authorities, and adapt only necessary gaps. Alternative substrates require evidence of a specific blocker and an ADR. Static inspection is not runtime acceptance.
+M0's scoped Linux/PGlite service and bounded real-model probes have passed; read docs/m0-validation.md for exact evidence and limits. Windows/WSL2 are outside the user-confirmed deployment scope. M1 is next: validate bounded native execution (prefer the upstream Claude Code route, evaluating DeepSeek compatibility), then adapt the open task/profile and three-participant roster. The pinned upstream contains no verified standalone Codex adapter. Preserve ClawInstitute as shared-content authority, address POST idempotency and unknown outcomes, and do not treat the M0 probe as the M1 runtime. Alternative substrates require a specific blocker and an ADR.

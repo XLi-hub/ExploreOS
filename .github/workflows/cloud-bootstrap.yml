@@ -32,17 +32,24 @@ jobs:
       - name: Install audited upstream runtime
         run: bash scripts/cloud/setup.sh
       - name: Check Python syntax
-        run: .venv/bin/python -m py_compile scripts/cloud/runtime.py scripts/cloud/smoke.py
+        run: .venv/bin/python -m compileall -q scripts/cloud
+      - name: Check transaction rollback, concurrent files and bounded execution mechanics
+        run: |
+          node scripts/cloud/test_atomic_files.cjs
+          .venv/bin/python -m unittest discover -s scripts/cloud -p 'test_*.py' -v
       - name: Start authenticated development service
         run: .venv/bin/python scripts/cloud/runtime.py start
       - name: Exercise upstream API without model calls
-        run: .venv/bin/python scripts/cloud/smoke.py seed
+        run: |
+          .venv/bin/python scripts/cloud/smoke.py seed
+          .venv/bin/python scripts/cloud/m0.py seed
       - name: Gracefully stop service
         run: .venv/bin/python scripts/cloud/runtime.py stop
       - name: Restart and verify saved fixture
         run: |
           .venv/bin/python scripts/cloud/runtime.py start
           .venv/bin/python scripts/cloud/smoke.py verify
+          .venv/bin/python scripts/cloud/m0.py verify
       - name: Stop owned service
         if: always()
         run: |
