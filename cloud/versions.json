@@ -23,5 +23,12 @@
     "node_minimum": "22.19.0",
     "agent_core_integrity": "sha512-PoKY84SKUwnt7S5QBZaGUqfNO1kjP3KHpHUA9QpFTj4cOjaVWMYIcBPJ6FDRCdE8Zen9OSECQUd0uUfVgtSmgA==",
     "pi_ai_integrity": "sha512-hQM/C4+1w8rHYACzDDf+0vQMnEnpzIop1tptIERVgR3ZeT/hHSzBNG8PaWPgxWQjqSeKCyBZSyp8uTT6eKK1pQ=="
+  },
+  "pi_subagents": {
+    "version": "0.82.0",
+    "coding_agent": "1.4.0",
+    "npm_integrity": "sha512-QlLilaRYQU1Lxn6Gy27LiHruJzPhTjpNUfQ/hlS+fW5AiZ+NBdqXORkY1jZMtSRDdXwAeA5rL5bbhgYB2REJ9g==",
+    "coding_agent_integrity": "sha512-Z41LpZ3yYHSC/UUps6Mr39UMFPwH8elhJBG9DY1P7kuzsE5qSK/6eMj2EHzO5evJRQWLbKSqUMw+4nCNtIyiQg==",
+    "profile": "foreground_fresh_zero_tools_single_request"
   }
 }

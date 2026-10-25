@@ -1,6 +1,6 @@
 # Pi 执行底座与 subagent 插件核对
 
-日期：2026-10-25。用户建议改用 Pi，并要求核对它的 subagent 插件。本页区分已经接入的运行库、真实兼容测试和仍未集成的插件能力。
+日期：2026-10-25。用户建议改用 Pi，并要求核对它的 subagent 插件。本页保留前一步运行库与插件核对。后续已接入可选前台委派路径，实际实现和新的验证见 [插件接入](subagent-integration.md)。
 
 ## 当前选择
 
@@ -58,10 +58,8 @@ Pi 原 `@mariozechner/*` 包已被 npm 标记迁移。核对后使用当前官�
 | 公开集成点 | `pi-subagents/preflight`、结构化 delegation、event-bus RPC、`external-runs`/后台工作接口 | 使用公开接缝，不复制插件内部调度实现；preflight 不是实际执行证明 |
 | 丢失 spawn 响应 | 可以按原 requestId 关联已有运行；文档明确 correlation 不等于 idempotent spawn | 未知派发不能直接重发；需要保留 runId/index 与本项目调用的对应关系 |
 
-## 为什么本次没有直接加载整个插件
+## 后续接入状态
 
-插件运行在 Pi Coding Agent 的扩展宿主中，并拥有自己的 session、run、后台控制与恢复产物。本次接入的是更小的 Agent core，尚未建立该扩展宿主与 ClawInstitute 的所有权映射。把插件直接当成一个普通工具挂进当前单请求叶子，会绕开目前已验证的派发和恢复边界。
+前一步只接入 Agent core，当时插件尚未加载。后续按 [ADR 0007](decisions/0007-plugin-foreground-delegation.md) 增加了固定 Coding Agent 扩展宿主，通过公开 preflight/capability-ceiling/delegation 接口执行一个前台叶子；不是简单把整个插件作为无限制工具暴露给模型。具体所有权、回执核对和测试见 [前台委派接入](subagent-integration.md)。
 
-本次对插件进行了源码和文档核对，没有安装到用户全局配置，也没有声称插件运行已验收。这个判断针对当前接缝的验证状态，不是认定插件能力不足。
-
-后续若需要工具型子任务、FleetView 或长期后台执行，应由插件拥有子运行与进程状态，ExploreOS 引用其稳定运行身份并保留探索内容权威，避免两边各自修改同一运行状态。接入验收先覆盖 fresh 上下文、工具上限、请求前预算、取消和未知 spawn，再启用后台或嵌套委派；不是继续自建另一套子代理平台。
+当前后台、嵌套委派、工具执行与 Fleet 工作台仍未启用。需要这些能力时继续沿插件公开接口复用，先验证预算和运行所有权，避免另造通用子代理平台。

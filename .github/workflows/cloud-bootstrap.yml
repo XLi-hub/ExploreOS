@@ -40,11 +40,13 @@ jobs:
         with:
           python-version: '3.11'
       - name: Check shell syntax
-        run: bash -n scripts/cloud/setup.sh scripts/cloud/setup_pi.sh scripts/cloud/setup_claude.sh
+        run: bash -n scripts/cloud/setup.sh scripts/cloud/setup_pi.sh scripts/cloud/setup_claude.sh scripts/cloud/setup_subagents.sh
       - name: Install audited upstream runtime
         run: bash scripts/cloud/setup.sh
       - name: Install pinned Pi libraries without model calls
         run: bash scripts/cloud/setup_pi.sh
+      - name: Install pinned subagent plugin host without model calls
+        run: bash scripts/cloud/setup_subagents.sh
       - name: Check Python syntax
         run: .venv/bin/python -m compileall -q scripts explore tests
       - name: Check transaction rollback, concurrent files and bounded execution mechanics

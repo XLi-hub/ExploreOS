@@ -13,6 +13,7 @@ from scripts.cloud.runtime import ROOT
 from .bootstrap import launch
 from .memory import Memory, select_shared_memory
 from . import reviews
+from .subagents import read_receipt, terminal as plugin_terminal
 from .models import REAL_BACKENDS, parse_json_output
 from .store import JsonFile, atomic_local
 
@@ -142,16 +143,31 @@ class Project:
         if not reason or not reason.strip():
             raise ValueError("An explicit correction/retry reason is required")
         ledger = budget.file.read()[0]["requests"] if budget else {}
+        observed, _ = self.file.read()
+        observed_call = observed["calls"][slot]
+        plugin_receipt = None
+        if observed_call["backend"] == "pi-subagents":
+            plugin_receipt = read_receipt(self.directory / "agents" / observed_call["actor"], observed_call["id"])
         def change(state):
             if state.get("controller") and alive(state["controller"]["process"]):
                 raise RuntimeError("Stop the current controller before authorizing a retry")
             call = state["calls"][slot]
+            if call["id"] != observed_call["id"]:
+                raise RuntimeError("The invocation changed while authorizing its retry")
             if alive(call.get("child")) or (call["status"] == "unknown" and alive(call.get("controller"))):
                 raise RuntimeError("The original process is still alive; do not duplicate its work")
             record = ledger.get(call["id"])
             if call["backend"] in REAL_BACKENDS:
                 if budget is None or (record is not None and record["state"] != "received"):
                     raise RuntimeError("Unknown supplier outcome; retain the reservation and reconcile first")
+            if call["backend"] == "pi-subagents":
+                unsent = (record is None and (call["status"] == "failed_before_dispatch" or
+                          (plugin_receipt is not None and plugin_receipt.get("emitted") is False)))
+                if not unsent and not plugin_terminal(plugin_receipt):
+                    raise RuntimeError("Plugin outcome is unknown; missing receipts do not authorize redispatch")
+                if (plugin_terminal(plugin_receipt) and plugin_receipt["response"]["status"] == "completed"
+                        and call["status"] != "invalid_output"):
+                    raise RuntimeError("Reconcile the completed plugin result instead of starting another paid attempt")
             if call["status"] not in ("failed", "failed_before_dispatch", "invalid_output", "unknown"):
                 raise RuntimeError("Only terminal failed or verified unsent attempts can be retried")
             if any(c["status"] in ("starting", "running", "unknown") and key != slot for key, c in state["calls"].items()):
@@ -529,7 +545,8 @@ class Project:
                 failure={"scope": "context assembly and allowlisted material read", "observed": type(error).__name__,
                          "retry_when": "repair the material/context and explicitly reconcile; no supplier request was dispatched"}))
             raise
-        self.file.update("request:" + call_id, lambda s: s["calls"][slot].update(request=request))
+        execution_ref = backend.execution_reference(call_id, self.directory / "agents" / actor) if hasattr(backend, "execution_reference") else None
+        self.file.update("request:" + call_id, lambda s: s["calls"][slot].update(request=request, execution_ref=execution_ref))
 
         def started(process):
             self.file.update("started:" + call_id,
@@ -671,6 +688,26 @@ class Project:
                     continue
             else:
                 record = ledger.get(call["id"], {})
+                if call["backend"] == "pi-subagents":
+                    if call["status"] == "failed_before_dispatch":
+                        continue
+                    try:
+                        receipt = read_receipt(self.directory / "agents" / call["actor"], call["id"])
+                    except ValueError:
+                        mark_orphan(slot, call, "unknown")
+                        continue
+                    if not plugin_terminal(receipt):
+                        unsent = receipt is not None and receipt.get("emitted") is False and not record
+                        mark_orphan(slot, call, "failed_before_dispatch" if unsent else "unknown")
+                        continue
+                    if receipt["response"]["status"] != "completed":
+                        mark_orphan(slot, call, "failed")
+                        continue
+                    if record.get("state") != "received":
+                        mark_orphan(slot, call, "unknown")
+                        continue
+                    # Plugin completion is required; supplier text alone is not a terminal leaf result.
+                    record = {**record, "output": receipt["response"]["result"]["text"]}
                 if record.get("output"):
                     try:
                         output = parse_json_output(record["output"])
@@ -687,6 +724,26 @@ class Project:
                     mark_orphan(slot, call, status)
         return self.status()
 
+    def execution_status(self):
+        state, _ = self.file.read()
+        observations = {}
+        attempts = [*state["calls"].items(), *(("retired:" + key, call) for key, call in state.get("retired_calls", {}).items())]
+        for slot, call in attempts:
+            if call["backend"] != "pi-subagents":
+                continue
+            item = {"call_id": call["id"], "controller_status": call["status"], "reference": call.get("execution_ref")}
+            try:
+                receipt = read_receipt(self.directory / "agents" / call["actor"], call["id"])
+                response = (receipt or {}).get("response", {})
+                item.update(receipt_phase=(receipt or {}).get("state", "missing"),
+                            plugin_status=response.get("status", "unknown"), run_id=response.get("runId"),
+                            launch_contract=response.get("launchContractDigest"),
+                            parent_session=(receipt or {}).get("parent_session_id"))
+            except ValueError:
+                item.update(receipt_phase="invalid", plugin_status="unknown")
+            observations[slot] = item
+        return observations
+
     def export(self, destination):
         state, version = self.file.read()
         posts = [{**entry, "post": self.client.request("GET", f"/posts/{entry['id']}")} for entry in state["posts"]]
@@ -696,6 +753,7 @@ class Project:
                 "real_model_case" if any(c["backend"] in REAL_BACKENDS and c["status"] == "completed" for c in attempts)
                 else "incomplete_execution_case"))
         snapshot = {"state": state, "file_version": version, "posts": posts,
+                    "execution_observations": self.execution_status(),
                     "sources": [self.read_source(source_id) for source_id in state["sources"]],
                     "kind": kind}
         atomic_local(destination / "export.json", snapshot)

@@ -10,6 +10,7 @@ from scripts.probe_native import session_budget
 from .engine import MODES, Project
 from .models import ClaudeBackend, Gateway, PiBackend, SimulatedBackend
 from .store import Client
+from .subagents import SubagentsBackend
 
 
 def main():
@@ -21,11 +22,11 @@ def main():
     create.add_argument("--scenario", choices=("split", "merge", "feedback"), default="split")
     create.add_argument("--question", help="Any open question; no metric or dataset required")
     create.add_argument("--source", action="append", default=[], help="Explicitly allowed UTF-8 material path; repeat for more materials")
-    for name in ("advance", "status", "pause", "resume", "cancel", "reconcile", "export", "steer", "add-source", "memory", "reviews", "extend", "challenge", "retry"):
+    for name in ("advance", "status", "pause", "resume", "cancel", "reconcile", "export", "steer", "add-source", "memory", "reviews", "executions", "extend", "challenge", "retry"):
         command = sub.add_parser(name)
         command.add_argument("name")
         if name == "advance":
-            command.add_argument("--backend", choices=("simulated", "pi", "claude"), default="simulated")
+            command.add_argument("--backend", choices=("simulated", "pi", "claude", "pi-subagents"), default="simulated")
             command.add_argument("--budget-cny", type=float, help="Explicit budget for first paid run; existing pools are never reset")
         if name == "steer":
             command.add_argument("question")
@@ -53,11 +54,11 @@ def main():
             raise ValueError("Project name must resolve directly below .research")
         project = Project(client, directory)
         if args.command == "advance":
-            if args.backend in ("pi", "claude"):
+            if args.backend in ("pi", "claude", "pi-subagents"):
                 key = os.environ.get("DEEPSEEK_API_KEY") or getpass.getpass("DeepSeek API key (hidden): ")
                 gateway = Gateway(key, session_budget(client, limit=args.budget_cny))
                 try:
-                    backend = PiBackend if args.backend == "pi" else ClaudeBackend
+                    backend = {"pi": PiBackend, "claude": ClaudeBackend, "pi-subagents": SubagentsBackend}[args.backend]
                     project.advance(backend(ROOT, gateway))
                 finally:
                     gateway.close()
@@ -87,6 +88,8 @@ def main():
                               "reviews": state.get("reviews", []),
                               "qualification": "Author responses preserve objections; no claim has been automatically verified"},
                              ensure_ascii=False, indent=2))
+        elif args.command == "executions":
+            print(json.dumps(project.execution_status(), ensure_ascii=False, indent=2))
         elif args.command in ("pause", "resume", "cancel", "steer"):
             project.control(args.command, getattr(args, "question", None))
     print(json.dumps(project.status(), ensure_ascii=False, indent=2))
