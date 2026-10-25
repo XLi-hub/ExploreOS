@@ -11,7 +11,7 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from explore.engine import MODES, Project
-from explore.models import ClaudeBackend, Gateway
+from explore.models import ClaudeBackend, Gateway, PiBackend
 from explore.store import Client, atomic_local
 from scripts.probe_native import session_budget
 from scripts.cloud.runtime import ROOT
@@ -24,6 +24,7 @@ if __name__ == "__main__":
     parser.add_argument("--rounds", type=int, choices=(1, 2), default=2)
     parser.add_argument("--project", help="Continue an existing case without repeating finished calls")
     parser.add_argument("--budget-cny", type=float, help="Explicit limit for a new pool; omit to reuse an existing pool")
+    parser.add_argument("--backend", choices=("pi", "claude"), default="pi")
     args = parser.parse_args()
     key = os.environ.get("DEEPSEEK_API_KEY") or getpass.getpass("DeepSeek API key (hidden): ")
     client = Client()
@@ -39,14 +40,15 @@ if __name__ == "__main__":
     print("Created", project.directory.name, flush=True)
     gateway = Gateway(key, budget)
 
-    class TracingClaude(ClaudeBackend):
+    selected_backend = PiBackend if args.backend == "pi" else ClaudeBackend
+    class TracingBackend(selected_backend):
         def call(self, call_id, *args, **kwargs):
             output = super().call(call_id, *args, **kwargs)
             print("Received", call_id, flush=True)
             return output
 
     try:
-        backend = TracingClaude(ROOT, gateway)
+        backend = TracingBackend(ROOT, gateway)
         for round_number in range(args.rounds):
             rounds = project.file.read()[0]["rounds"]
             if len(rounds) > round_number and rounds[round_number]["status"] == "completed":

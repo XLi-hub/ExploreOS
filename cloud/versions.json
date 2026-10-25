@@ -16,5 +16,12 @@
   "claude_code": {
     "version": "2.1.310",
     "npm_integrity": "sha512-EySpBwaocdU1nc9r7JH+GOlnMsbXc764d3HX7NL8fr7qqdxz2MiXI9hqf/rzeE/XgU23HHFltIqhb+Fq6G1CVw=="
+  },
+  "pi": {
+    "agent_core": "1.4.0",
+    "pi_ai": "1.4.0",
+    "node_minimum": "22.19.0",
+    "agent_core_integrity": "sha512-PoKY84SKUwnt7S5QBZaGUqfNO1kjP3KHpHUA9QpFTj4cOjaVWMYIcBPJ6FDRCdE8Zen9OSECQUd0uUfVgtSmgA==",
+    "pi_ai_integrity": "sha512-hQM/C4+1w8rHYACzDDf+0vQMnEnpzIop1tptIERVgR3ZeT/hHSzBNG8PaWPgxWQjqSeKCyBZSyp8uTT6eKK1pQ=="
   }
 }

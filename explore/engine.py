@@ -12,7 +12,8 @@ import uuid
 from scripts.cloud.runtime import ROOT
 from .bootstrap import launch
 from .memory import Memory, select_shared_memory
-from .models import parse_json_output
+from . import reviews
+from .models import REAL_BACKENDS, parse_json_output
 from .store import JsonFile, atomic_local
 
 MODES = ("single", "multiple_perspectives", "independent", "collaborative")
@@ -80,7 +81,7 @@ class Project:
             "question_revisions": [{"number": 1, "text": question or "如何让本项目从多智能体演示走向可持续、可核对的开放探索？", "author": question_author if question else "user_fixture"}],
             "agents": {actor: {"direction": None, "cursor": 0, "perspective": PERSPECTIVES[i]} for i, actor in enumerate(actors)},
             "directions": {}, "changes": {}, "direction_history": [], "sources": snapshots, "rounds": [],
-            "calls": {}, "posts": [], "knowledge": {}, "events": []})
+            "calls": {}, "posts": [], "knowledge": {}, "reviews": [], "events": []})
         return project
 
     def add_source(self, path, title=None):
@@ -101,7 +102,10 @@ class Project:
         state, version = self.file.read()
         return {"name": state["name"], "mode": state["mode"], "status": state["status"], "version": version,
                 "rounds": state["rounds"], "calls": {key: value["status"] for key, value in state["calls"].items()},
-                "directions": state["directions"], "changes": state["changes"]}
+                "directions": state["directions"], "changes": state["changes"],
+                "review_count": len(state.get("reviews", [])),
+                "unanswered_challenges": sum(not c.get("author_responses") for k in state.get("knowledge", {}).values()
+                                             for c in k.get("challenges", []))}
 
     def control(self, command, question=None, author="user"):
         def change(state):
@@ -145,7 +149,7 @@ class Project:
             if alive(call.get("child")) or (call["status"] == "unknown" and alive(call.get("controller"))):
                 raise RuntimeError("The original process is still alive; do not duplicate its work")
             record = ledger.get(call["id"])
-            if call["backend"] == "claude":
+            if call["backend"] in REAL_BACKENDS:
                 if budget is None or (record is not None and record["state"] != "received"):
                     raise RuntimeError("Unknown supplier outcome; retain the reservation and reconcile first")
             if call["status"] not in ("failed", "failed_before_dispatch", "invalid_output", "unknown"):
@@ -169,9 +173,9 @@ class Project:
             raise ValueError("Choose a finding in this project and provide a concrete challenge")
         if source_id is not None and source_id not in state["sources"]:
             raise ValueError("Challenge source is not in this project's material index")
-        if author_type not in ("user", "assistant_review"):
-            raise ValueError("Challenge author must be identified as user or assistant_review")
-        author = ("user_" if author_type == "user" else "review_") + state["name"][:20]
+        if author_type not in ("user", "assistant_review", "evaluation_script"):
+            raise ValueError("Identify the challenge author as user, assistant_review or evaluation_script")
+        author = {"user": "user_", "assistant_review": "review_", "evaluation_script": "script_"}[author_type] + state["name"][:20]
         self.client.request("POST", "/agents/register", {"name": author, "description": author_type + " intervention record"})
         operation = "challenge:" + uuid.uuid4().hex
         body = {"target_post": target_post, "reason": reason, "source_id": source_id,
@@ -190,8 +194,11 @@ class Project:
             knowledge = state.setdefault("knowledge", {}).setdefault(target_post, {"post_id": target_post,
                 "actor": entry["actor"], "question_revision": entry["question_revision"],
                 "claim_truth_verified": False})
-            knowledge["status"] = "contested"
-            knowledge.setdefault("challenges", []).append({"post_id": published, "reason": reason, "source_id": source_id})
+            if knowledge.get("status") not in reviews.INACTIVE:
+                knowledge["status"] = "contested"
+            knowledge["review_version"] = knowledge.get("review_version", 0) + 1
+            knowledge.setdefault("challenges", []).append({"post_id": published, "reason": reason, "source_id": source_id,
+                "author_type": body["author_type"], "question_revision": body["question_revision"]})
             state["posts"].append({"id": published, "actor": author, "phase": "challenge", "round": body["round"],
                                    "question_revision": body["question_revision"]})
             self.event(state, "finding_challenged", target_post=target_post, challenge_post=published)
@@ -208,6 +215,12 @@ class Project:
         return source
 
     def request_for(self, state, actor, phase, round_record):
+        review_context = None
+        if phase == "reflect":
+            planned = state["calls"][f"r{round_record['number']}.plan.{actor}"]
+            chosen = reviews.selection(planned["output"], planned["request"])
+            if chosen is not None:
+                review_context = reviews.context(self.client, state, chosen)
         peers = []
         if state["mode"] == "collaborative" and phase != "propose":
             for entry in state["posts"][-18:]:
@@ -222,8 +235,15 @@ class Project:
             if call["actor"] == actor and call["status"] == "completed" and result.get("summary"):
                 memory_store.remember(call["id"], summary=result["summary"], question_revision=call["question_revision"],
                     source_ids=[result["evidence"]["source_id"]] if result.get("evidence") else [],
-                    unresolved=result.get("unresolved", ""), peer_posts=result.get("influenced_by", []))
-        memory = memory_store.recall(state["question_revisions"][round_record["question_revision"] - 1]["text"])
+                    unresolved=result.get("unresolved", ""), peer_posts=result.get("influenced_by", []), review=result.get("review"))
+        memory = memory_store.recall(state["question_revisions"][round_record["question_revision"] - 1]["text"],
+                                    preferred_ids=review_context["memory_note_ids"] if review_context else ())
+        prior_findings = {call["id"]: state.get("knowledge", {}).get(call.get("post_id")) for call in state["calls"].values()}
+        for note in memory.get("recalled_notes", []):
+            finding = prior_findings.get(note["id"])
+            if finding:
+                note["current_finding"] = {key: finding[key] for key in
+                    ("post_id", "status", "question_revision", "superseded_by", "withdrawn_by") if key in finding}
         directions = list(state["directions"].values())
         if state["mode"] != "collaborative":
             directions = [d for d in directions if actor in d["members"]]
@@ -246,10 +266,14 @@ class Project:
         request["previously_read_peer_ids"] = (priority_links + sorted(previously_read - recalled_links))[:100]
         request["index_cursor"] = len(state["posts"]) if phase != "propose" else state["agents"][actor]["cursor"]
         request["shared_memory"] = select_shared_memory(state, actor, phase, request["question"], request["question_revision"])
+        request["review_candidates"] = reviews.candidates(state, actor, request["question"], request["question_revision"]) if phase == "plan" else []
+        request["review_context"] = review_context
+        request["peer_critique_enabled"] = state["mode"] == "collaborative" and phase == "reflect"
         if phase == "propose":
             request["contract"] = {"direction": "一个暂定探索方向，避免声称已验证", "reason": "方向理由", "summary": "私有工作摘要"}
         elif phase == "plan":
             request["contract"] = {"source_id": "选择实际读取的一份来源ID；本次只推理可为null，无资料时必须为null", "purpose": "检查什么假设，考虑质疑和重复工作",
+                                   "review": "null，或{target_post:review_candidates中自己的旧发现ID,reason:为什么复查}；可选择新材料检查，不要求每次复查",
                                    "influenced_by": ["实际影响行动的同伴帖子ID，没有则为空"],
                                    "acknowledge": ["只能来自本次pending_changes列表；该列表为空必须给空数组，不要复制同伴对旧提案的确认"]}
         elif phase == "consent":
@@ -269,8 +293,12 @@ class Project:
             if request["tool_result"] is None:
                 request["contract"]["evidence"] = None
                 request["contract"]["claim_kind"] = "inference/hypothesis/idea之一；本次没有外部材料，禁止把主张标为fact"
+            request["contract"]["review"] = ("{target_post:本次复查目标ID,decision:retain/revise/withdraw/undecided之一,reason:结合实际检查的理由,addressed_challenges:[实际回应的review_context质疑ID]}；revise时finding写新主张；允许保留分歧，回应不等于质疑已解决"
+                                               if review_context else "null；本次未在plan选择复查，不能改写旧发现")
+            request["contract"]["critique"] = ("null，或{target_post:本次peers或shared_memory中他人的发现ID,reason:具体质疑}；仅有索引时只能指出待查问题，不能声称读过全文；质疑不自动推翻主张"
+                                                 if request["peer_critique_enabled"] else "null；本配置不提供同伴质疑通道")
         request["instructions"] = "严格输出JSON对象，键与contract一致，每个文字字段最多100字。视角提示可自行拒绝或修订，不是固定研究分工。不得编造来源或同伴ID，不用多数同意代替证据。方向与分工由你根据证据判断，程序不要求必定改向。"
-        omitted = {"peers": 0, "shared_memory": 0, "private_notes": 0}
+        omitted = {"peers": 0, "shared_memory": 0, "private_notes": 0, "review_candidates": 0}
         def size():
             return len(json.dumps(request, ensure_ascii=False).encode())
         while size() > 22000 and request["peers"]:
@@ -282,6 +310,9 @@ class Project:
         while size() > 22000 and request["private_memory"].get("recalled_notes"):
             request["private_memory"]["recalled_notes"].pop()
             omitted["private_notes"] += 1
+        while size() > 22000 and request["review_candidates"]:
+            request["review_candidates"].pop()
+            omitted["review_candidates"] += 1
         if size() > 22000:
             raise ValueError("Question or material slice exceeds the bounded context; provide a smaller focus or slice")
         request["context_omissions"] = omitted
@@ -294,6 +325,10 @@ class Project:
         if not isinstance(output, dict):
             raise ValueError("Participant returned a non-object")
         phase = request["phase"]
+        if phase not in ("plan", "reflect") and output.get("review") is not None:
+            raise ValueError("Review actions belong in plan/reflect, not other phases")
+        if phase != "reflect" and output.get("critique") is not None:
+            raise ValueError("Peer objections belong in a finding's reflect output")
         strings = {"propose": ("direction", "reason", "summary"), "plan": ("purpose",), "consent": ("reason",),
                    "reflect": ("finding", "summary", "unresolved")}[phase]
         if any(not isinstance(output.get(key), str) or not output[key].strip() for key in strings):
@@ -318,10 +353,13 @@ class Project:
                 output["ignored_obsolete_acknowledgements"] = obsolete
                 output["acknowledge"] = [ack for ack in acks if ack in pending_ids]
         if phase == "plan":
+            reviews.selection(output, request)
             if "source_id" not in output or (output["source_id"] is not None and
                     output["source_id"] not in {source["id"] for source in request["sources"]}):
                 raise ValueError("Source outside read allowlist")
         if phase == "reflect":
+            reviews.validate(output, request)
+            reviews.validate_critique(output, request)
             if output.get("claim_kind", "inference") not in ("fact", "inference", "hypothesis", "idea"):
                 raise ValueError("Claim kind must distinguish fact, inference, hypothesis and idea")
             evidence = output.get("evidence")
@@ -389,7 +427,7 @@ class Project:
             Memory(self.directory / "agents" / actor / "memory").remember(call_id,
                 summary=output["summary"], question_revision=request["question_revision"],
                 source_ids=[output["evidence"]["source_id"]] if output.get("evidence") else [],
-                unresolved=output.get("unresolved", ""), peer_posts=output.get("influenced_by", []))
+                unresolved=output.get("unresolved", ""), peer_posts=output.get("influenced_by", []), review=output.get("review"))
             atomic_local(self.directory / "agents" / actor / "memory/exploration.json",
                          {"summary": output["summary"], "question_revision": request["question_revision"], "last_call": call_id})
 
@@ -416,6 +454,9 @@ class Project:
                 if phase == "plan":
                     source_id = output["source_id"]
                     call["read_source"] = {"id": source_id, "sha256": state["sources"][source_id]["sha256"] if source_id is not None else None}
+                    chosen = reviews.selection(output, request)
+                    if chosen:
+                        call["review_target"] = {"post_id": chosen["post_id"], "version": chosen["review_version"]}
             if phase == "reflect" and output.get("change"):
                 proposed = output["change"]
                 origin_id = state["agents"][actor]["direction"]
@@ -438,6 +479,12 @@ class Project:
                     "evidence": output["evidence"], "unresolved": output["unresolved"],
                     "revisit_when": output.get("revisit_when", "Recheck when question, material or assumptions change"),
                     "source_quote_verified": output.get("evidence") is not None, "claim_truth_verified": False}
+                review = reviews.record(state, actor, call_id, post_id, output, request)
+                if review:
+                    self.event(state, "finding_reviewed", review_id=review["id"], status=review["status"])
+                challenged = reviews.record_critique(state, actor, post_id, output, request)
+                if challenged:
+                    self.event(state, "peer_challenged_finding", target_post=challenged, challenge_post=post_id)
             self.event(state, "call_completed", call_id=call_id, post_id=post_id,
                        question_revision=request["question_revision"])
             return post_id
@@ -504,7 +551,7 @@ class Project:
             current, _ = self.file.read()
             known_output = current["calls"][slot].get("output") is not None
             status = ("invalid_output" if isinstance(error, ValueError) else "received") if known_output else (
-                "unknown" if backend.name == "claude" else "failed")
+                "unknown" if backend.name in REAL_BACKENDS else "failed")
             failure = {"scope": f"{phase} at question revision {request['question_revision']}",
                        "observed": type(error).__name__, "classification": "execution_observation_not_rejected_hypothesis",
                        "retry_when": "known outcomes may be reconciled; unknown supplier requests retain their reservation"}
@@ -634,7 +681,7 @@ class Project:
                     self.file.update("recovered:" + call["id"], lambda s, k=slot, v=output: s["calls"][k].update(status="received", output=v))
                     self.finalize(slot, call["actor"], call["phase"], output, call["request"])
                 elif call["status"] in ("starting", "running", "unknown"):
-                    status = "failed" if call["backend"] != "claude" else (
+                    status = "failed" if call["backend"] not in REAL_BACKENDS else (
                         "failed_before_dispatch" if budget is not None and not record else (
                             "invalid_output" if record.get("state") == "received" else "unknown"))
                     mark_orphan(slot, call, status)
@@ -646,14 +693,16 @@ class Project:
         attempts = [*state["calls"].values(), *state.get("retired_calls", {}).values()]
         kind = "not_run" if not attempts else (
             "mechanical_fixture" if all(c["backend"] == "simulated" for c in attempts) else (
-                "real_model_case" if any(c["backend"] == "claude" and c["status"] == "completed" for c in attempts)
+                "real_model_case" if any(c["backend"] in REAL_BACKENDS and c["status"] == "completed" for c in attempts)
                 else "incomplete_execution_case"))
         snapshot = {"state": state, "file_version": version, "posts": posts,
                     "sources": [self.read_source(source_id) for source_id in state["sources"]],
                     "kind": kind}
         atomic_local(destination / "export.json", snapshot)
         lines = [f"# {state['name']} 阶段简报", "", f"模式：{state['mode']}；状态：{state['status']}；轮数：{len(state['rounds'])}",
-                 "", f"记录性质：{snapshot['kind']}；模拟运行不验证探索质量。", "", "## 当前方向", ""]
+                 "", f"记录性质：{snapshot['kind']}；模拟运行不验证探索质量。", "", "## 问题版本", ""]
+        lines.extend(f"- v{q['number']}（{q['author']}）：{q['text']}" for q in state["question_revisions"])
+        lines.extend(["", "## 当前方向", ""])
         lines.extend(f"- {d['title']}（{d['status']}，{', '.join(d['members']) or '无当前成员'}）" for d in state["directions"].values())
         lines.extend(["", "## 发现与未决问题", ""])
         for item in posts:
@@ -673,6 +722,17 @@ class Project:
             if item["phase"] == "challenge":
                 content = json.loads(item["post"]["content"])
                 lines.append(f"- 对 {content['target_post']} 的 {content['author_type']} 质疑：{content['reason']}；来源：{content['source_id']}")
+        for finding in state.get("knowledge", {}).values():
+            for challenge in finding.get("challenges", []):
+                if challenge.get("author_type") == "peer":
+                    lines.append(f"- {challenge['actor']} 对 {finding['post_id']} 的同伴质疑：{challenge['reason']}；记录：{challenge['post_id']}；所见：{challenge['basis_view']}")
+        lines.extend(["", "## 旧认识复查", ""])
+        for review in state.get("reviews", []):
+            lines.extend([f"- {review['actor']} 对 {review['target_post']} → {review['response_post']}：{review['decision']}（{review['status']}）",
+                          f"  - 理由：{review['reason']}；实际回应的质疑：{review['addressed_challenges']}",
+                          f"  - 取回的原笔记：{review['recalled_note_ids']}；实际材料：{(review.get('evidence') or {}).get('source_id', '无外部材料')}"])
+        unanswered = sum(not c.get("author_responses") for k in state.get("knowledge", {}).values() for c in k.get("challenges", []))
+        lines.append(f"尚无当前版本作者回应的质疑：{unanswered}。有回应也不等于异议已解决；修订后的主张仍待核查，过期复查不改变旧认识状态。")
         lines.extend(["", "## 运行与变更", "", f"已完成调用：{sum(c['status']=='completed' for c in state['calls'].values())}/{len(state['calls'])}",
                       f"已应用方向/成员变更：{len(state['direction_history'])}；待确认：{sum(c['status']=='pending' for c in state['changes'].values())}；过期未生效：{sum(c['status']=='stale' for c in state['changes'].values())}",
                       f"保留的历史失败尝试：{len(state.get('retired_calls',{}))}；重试仍计入调用限额与费用预留。",

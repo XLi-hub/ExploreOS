@@ -8,7 +8,7 @@ import sys
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from explore.models import ClaudeBackend, Gateway
+from explore.models import ClaudeBackend, Gateway, PiBackend
 from explore.store import Budget, Client, JsonFile, atomic_local
 from scripts.cloud.runtime import ROOT
 
@@ -40,18 +40,20 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--budget-cny", type=float, help="Explicit limit for a new pool; omit to reuse an existing pool")
+    parser.add_argument("--backend", choices=("pi", "claude"), default="pi")
     args = parser.parse_args()
     key = os.environ.get("DEEPSEEK_API_KEY") or getpass.getpass("DeepSeek API key (hidden): ")
     budget = session_budget(Client(), limit=args.budget_cny)
     gateway = Gateway(key, budget)
     call_id = "native-compat-" + uuid.uuid4().hex
     try:
-        result = ClaudeBackend(ROOT, gateway).call(call_id, [
+        backend = PiBackend if args.backend == "pi" else ClaudeBackend
+        result = backend(ROOT, gateway).call(call_id, [
             {"question": "A shared file is read at version 1 by two workers. The update checks only its id, not its version. What concurrency condition should an atomic claim enforce?",
              "format": '{"condition":"one concise sentence","unknown":"one remaining limitation"}'}
         ], ROOT / ".research/native-probe")
-        atomic_local(ROOT / ".runtime/native-cli-probe.json", {"call_id": call_id, "result": result,
-                     "cli_version": "2.1.310", "tools": [], "max_supplier_requests": 1})
+        atomic_local(ROOT / f".runtime/native-{args.backend}-probe.json", {"call_id": call_id, "result": result,
+                     "backend": args.backend, "tools": [], "max_supplier_requests": 1})
         print(json.dumps({"passed": True, "result": result}, ensure_ascii=False))
     finally:
         gateway.close()
