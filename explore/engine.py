@@ -314,8 +314,16 @@ class Project:
             request["contract"]["critique"] = ("null，或{target_post:本次peers或shared_memory中他人的发现ID,reason:具体质疑}；仅有索引时只能指出待查问题，不能声称读过全文；质疑不自动推翻主张"
                                                  if request["peer_critique_enabled"] else "null；本配置不提供同伴质疑通道")
         request["instructions"] = "严格输出JSON对象，键与contract一致，每个文字字段最多100字。视角提示可自行拒绝或修订，不是固定研究分工。不得编造来源或同伴ID，不用多数同意代替证据。方向与分工由你根据证据判断，程序不要求必定改向。"
-        omitted = {"peers": 0, "shared_memory": 0, "private_notes": 0, "review_candidates": 0}
+        omitted = {"peers": 0, "shared_memory": 0, "private_notes": 0, "review_candidates": 0,
+                   "review_challenges": 0}
+        request["context_omissions"] = omitted
+        if review_context:
+            review_context["omitted_challenge_ids"] = []
+            review_context["qualification"] += "; omitted objections were not supplied and cannot be claimed as addressed"
         def size():
+            request["contribution_views"] = {entry["post_id"]: "qualified_memory_index" for entry in request["shared_memory"] if entry["actor"] != actor}
+            request["contribution_views"].update({entry["post_id"]: "change_proposal" for entry in request["pending_changes"] if entry["actor"] != actor})
+            request["contribution_views"].update({entry["id"]: "full_post" for entry in request["peers"]})
             return len(json.dumps(request, ensure_ascii=False).encode())
         while size() > 22000 and request["peers"]:
             request["peers"].pop(0)
@@ -329,12 +337,12 @@ class Project:
         while size() > 22000 and request["review_candidates"]:
             request["review_candidates"].pop()
             omitted["review_candidates"] += 1
+        while size() > 22000 and review_context and review_context["challenges"]:
+            entry = review_context["challenges"].pop()
+            review_context["omitted_challenge_ids"].append(entry["post_id"])
+            omitted["review_challenges"] += 1
         if size() > 22000:
             raise ValueError("Question or material slice exceeds the bounded context; provide a smaller focus or slice")
-        request["context_omissions"] = omitted
-        request["contribution_views"] = {entry["post_id"]: "qualified_memory_index" for entry in request["shared_memory"] if entry["actor"] != actor}
-        request["contribution_views"].update({entry["post_id"]: "change_proposal" for entry in request["pending_changes"] if entry["actor"] != actor})
-        request["contribution_views"].update({entry["id"]: "full_post" for entry in request["peers"]})
         return request
 
     def validate(self, output, request):
