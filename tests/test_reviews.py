@@ -253,6 +253,52 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(state["reviews"], [])
         self.assertTrue(all(k["status"] == "provisional" for k in state["knowledge"].values()))
 
+    def test_large_peer_objections_do_not_strand_review_or_claim_omitted_responses(self):
+        project = self.project()
+        target = self.first_finding(project)
+        state, _ = project.file.read()
+        actor = state["knowledge"][target]["actor"]
+        with tempfile.TemporaryDirectory() as directory:
+            material = Path(directory) / "large.md"
+            material.write_text("Synthetic scope counterexample.\n" + "x" * 11850 + "\n")
+            source_id = project.add_source(str(material))
+        # Synthetic accumulated peer posts use ordinary 100-character fields.
+        objections = []
+        for index in range(6):
+            body = {key: "质" * 100 for key in
+                    ("finding", "summary", "unresolved", "revisit_when")}
+            body.update(critique={"target_post": target, "reason": "疑" * 100},
+                        evidence={"source_id": source_id, "quote": "据" * 100})
+            post_id = self.client.publish(project.metadata["workshop"], actor,
+                "large-objection:" + str(index), "reflect", body)
+            objections.append({"post_id": post_id, "reason": "疑" * 100,
+                               "source_id": source_id, "author_type": "peer"})
+        def add_feedback(current):
+            current["knowledge"][target].update(challenges=objections, status="contested", review_version=6)
+        project.file.update("large-feedback-fixture", add_feedback)
+        project.advance(SimulatedBackend("feedback"))
+        final, _ = project.file.read()
+        response = next(c for c in final["calls"].values()
+                        if (c.get("output", {}).get("review") or {}).get("decision"))
+        request = response["request"]
+        context = request["review_context"]
+        self.assertLessEqual(len(json.dumps(request, ensure_ascii=False).encode()), 22000)
+        self.assertEqual(request["tool_result"]["sha256"], project.read_source(source_id)["sha256"])
+        self.assertEqual(context["original"], json.loads(self.client.request("GET", "/posts/" + target)["content"]))
+        self.assertNotIn("challenges", context["target"])
+        omitted = context["omitted_challenge_ids"]
+        self.assertTrue(omitted)
+        self.assertEqual(request["context_omissions"]["review_challenges"], len(omitted))
+        supplied = [c["post_id"] for c in context["challenges"]]
+        self.assertEqual(set(supplied + omitted), {c["post_id"] for c in objections})
+        self.assertEqual(final["reviews"][0]["addressed_challenges"], supplied)
+        bad = copy.deepcopy(response["output"])
+        bad["review"]["addressed_challenges"] = [omitted[0]]
+        with self.assertRaises(ValueError):
+            project.validate(bad, request)
+        remaining = [c for c in final["knowledge"][target]["challenges"] if c["post_id"] in omitted]
+        self.assertTrue(all(not c.get("author_responses") for c in remaining))
+
 
 if __name__ == "__main__":
     unittest.main()

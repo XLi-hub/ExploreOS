@@ -56,7 +56,10 @@ def context(client, state, card):
                            "author_type": entry.get("author_type", "historical_intervention"),
                            "source_id": entry.get("source_id"), "content": json.loads(post["content"])})
     note_ids = [call["id"] for call in state["calls"].values() if call.get("post_id") == card["post_id"]]
-    return {"target": copy.deepcopy(card), "original": json.loads(original["content"]),
+    # Objections live in the supplied list only. Duplicating the plan card's
+    # challenges here both wastes context and makes omitted IDs look visible.
+    target = {key: copy.deepcopy(value) for key, value in card.items() if key != "challenges"}
+    return {"target": target, "original": json.loads(original["content"]),
             "challenges": challenges, "memory_note_ids": note_ids,
             "qualification": "Recheck applicability and evidence; replying does not settle an objection"}
 
