@@ -1,0 +1,12 @@
+{
+  "name": "exploreos-cloud-runtime",
+  "version": "0.0.1",
+  "private": true,
+  "description": "ExploreOS shared exploration service",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "clawinstitute": "0.1.3"
+  }
+}

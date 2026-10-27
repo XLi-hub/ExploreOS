@@ -1,0 +1,100 @@
+--- a/launch.py
++++ b/launch.py
+@@ -166,6 +166,7 @@
+     _task_meta = _yaml.safe_load(_task_md_parts[1]) or {}
+     _task_type = _task_meta.get("task_type", "optimization")
+ 
++IS_OPEN_EXPLORATION = _task_type == "open_exploration"
+ IS_BENCHMARK = _task_type == "biomlbench"
+ IS_PROTEINGYM = _task_type == "proteingym"
+ 
+@@ -239,7 +240,7 @@
+     print(f"  task-biomlbench/LAUNCH.md, or task-protein-gym/LAUNCH.md as references.")
+     sys.exit(1)
+ shutil.copy2(_task_launch_md, RUN_DIR / "task-profile.md")
+-print(f"  Copied: {_task_launch_md.relative_to(TEMPLATE_DIR)} → task-profile.md")
++print(f"  Copied: {_task_launch_md.name} → task-profile.md")
+ 
+ if IS_BENCHMARK:
+     print(f"  To run: open {RUN_DIR}/{program_file} in a Claude Code session and follow it.")
+@@ -414,7 +415,7 @@
+ _task_has_repo = (TEMPLATE_DIR / task_source / "repo").is_dir()
+ _task_has_champion = (TEMPLATE_DIR / task_source / "champion").is_dir()
+ 
+-if IS_BENCHMARK:
++if IS_BENCHMARK or IS_OPEN_EXPLORATION:
+     # Agents build their own solution; nothing to pre-populate.
+     pass
+ 
+@@ -569,6 +570,13 @@
+     f"{PREFIX}_analyst3": ("Analyst 3 — researches mechanisms, proposes experiments",        "analyst", "server3", -1),
+ }
+ 
++if IS_OPEN_EXPLORATION:
++    _participant_count = _task_meta.get("participants", 3)
++    if type(_participant_count) is not int or not 1 <= _participant_count <= 8:
++        raise ValueError("participants must be an integer from 1 to 8")
++    AGENTS = {f"{PREFIX}_explorer{i}": (f"Open exploration participant {i}", "explorer", "local", -1)
++              for i in range(_participant_count)}
++
+ NOW = datetime.now(timezone.utc).isoformat()
+ 
+ 
+@@ -641,10 +649,11 @@
+ 
+     # Build HEARTBEAT.md for this agent (self-contained: boot + role + team + record + exit)
+     system_dir = TEMPLATE_DIR / "system" / "templates"
+-    heartbeat_template = (system_dir / "HEARTBEAT.md").read_text()
++    heartbeat_template = (system_dir / ("HEARTBEAT-EXPLORATION.md" if IS_OPEN_EXPLORATION else "HEARTBEAT.md")).read_text()
+ 
+     # Inject role-specific content
+     role_file_map = {
++        "explorer": "ROLE-EXPLORER.md",
+         "gpu": "ROLE-GPU.md",
+         "analyst": "ROLE-ANALYST.md",
+         "monitor": "ROLE-MONITOR.md",
+@@ -658,7 +667,7 @@
+ 
+     team_src = system_dir / "ROLE-TEAM.md"
+     team_content = ""
+-    if team_src.exists():
++    if team_src.exists() and not IS_OPEN_EXPLORATION:
+         team_content = team_src.read_text()
+         team_parts = team_content.split("---")
+         if len(team_parts) >= 3:
+@@ -725,7 +734,7 @@
+         "name": WORKSHOP_NAME,
+         "display_name": DISPLAY_NAME,
+         "description": DESCRIPTION,
+-        "instructions": (
++        "instructions": "Bounded open exploration: preserve evidence, competing directions and unresolved questions." if IS_OPEN_EXPLORATION else (
+             "Multi-agent focus area for benchmark optimization.\n\n"
+             "Post types: [PROPOSAL], [RESULT], [DISCUSSION], [NEAR-MISS], [AUDIT]\n\n"
+             "Rules:\n"
+@@ -760,7 +769,7 @@
+         )
+         if r.status_code < 300:
+             action = r.json().get("action", "")
+-            if action in ("subscribed", "already_subscribed"):
++            if r.json().get("subscribed") is True or action in ("subscribed", "already_subscribed"):
+                 subscribed += 1
+             else:
+                 print(f"  Warning: {name} subscribe returned {r.status_code} {r.text[:120]}")
+@@ -800,6 +809,17 @@
+     }, indent=2))
+     print(f"  Saved WORKSPACE_ID, WORKSHOP_NAME, and run_metadata.json")
+ 
++    if IS_OPEN_EXPLORATION:
++        task_md, _ = _read_task_md(TASK_DIR)
++        put_file(ws_id, "task.md", task_md)
++        kickoff = requests.post(f"{API}/posts", headers={**HEADERS, "X-Agent-Name": next(iter(AGENTS))}, json={
++            "workshop": WORKSHOP_NAME, "operation_id": "bootstrap:" + RUN_ID,
++            "title": "[QUESTION] Open exploration bootstrap", "content": task_md,
++        }, timeout=15)
++        kickoff.raise_for_status()
++        print("  Open exploration initialized; no model calls, training repository or champion.")
++        return
++
+     # ── Step 5: Populate Workspace ──────────────────────────
+     print("\n[5/6] Populating workspace...")
+ 

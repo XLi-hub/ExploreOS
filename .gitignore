@@ -1,0 +1,39 @@
+# Local credentials and machine settings
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+config.local.*
+
+# Research state, downloaded runtimes, datasets and experiment outputs
+.research/
+.runtime/
+.venv/
+data/
+artifacts/
+runs/
+logs/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Python and frontend build caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+node_modules/
+dist/
+build/
+
+# Editor and operating system files
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store

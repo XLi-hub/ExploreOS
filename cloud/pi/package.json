@@ -1,0 +1,10 @@
+{
+  "name": "exploreos-pi-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pinned Pi agent runtime for bounded ExploreOS participants",
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0"
+  }
+}
