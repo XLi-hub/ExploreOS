@@ -9,6 +9,7 @@
 ~~~bash
 bash scripts/cloud/setup.sh
 bash scripts/cloud/setup_pi.sh
+bash scripts/cloud/setup_subagents.sh
 .venv/bin/python scripts/cloud/runtime.py start
 node scripts/cloud/test_atomic_files.cjs
 .venv/bin/python -m unittest discover -s scripts/cloud -p 'test_*.py' -v
@@ -88,6 +89,12 @@ bash scripts/cloud/setup_pi.sh
 密钥优先取云环境的 `DEEPSEEK_API_KEY`；未配置时终端隐藏输入。不要把真实密钥放进命令行或 Git。首次付费运行需要明确预算；已有共享预算池不会因再次传入参数而重置。
 
 本开发环境的池已包含此前测试用量和 M0 的保守预留，验收已有产物和机械示例不需要新模型调用。池中的预留不是供应商账单，未知调用不归零。
+
+## 使用插件前台子任务
+
+已授权预算的真实新项目可用 `advance NAME --backend pi-subagents`；先执行 `bash scripts/cloud/setup_subagents.sh`。`executions NAME` 查看稳定委派身份与实际插件终态，`reconcile NAME` 核对已有回执，不追加模型调用。已有项目不混换后端。
+
+零付费验收运行 `.venv/bin/python -m unittest discover -s tests -p test_subagents.py -v`，细节见 [插件接入](subagent-integration.md)。后台、嵌套委派和工具尚未启用。
 
 ## 原开发环境中的真实结果
 

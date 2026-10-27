@@ -12,6 +12,7 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from explore.engine import MODES, Project
 from explore.models import ClaudeBackend, Gateway, PiBackend
+from explore.subagents import SubagentsBackend
 from explore.store import Client, atomic_local
 from scripts.probe_native import session_budget
 from scripts.cloud.runtime import ROOT
@@ -24,7 +25,7 @@ if __name__ == "__main__":
     parser.add_argument("--rounds", type=int, choices=(1, 2), default=2)
     parser.add_argument("--project", help="Continue an existing case without repeating finished calls")
     parser.add_argument("--budget-cny", type=float, help="Explicit limit for a new pool; omit to reuse an existing pool")
-    parser.add_argument("--backend", choices=("pi", "claude"), default="pi")
+    parser.add_argument("--backend", choices=("pi", "claude", "pi-subagents"), default="pi")
     args = parser.parse_args()
     key = os.environ.get("DEEPSEEK_API_KEY") or getpass.getpass("DeepSeek API key (hidden): ")
     client = Client()
@@ -40,7 +41,7 @@ if __name__ == "__main__":
     print("Created", project.directory.name, flush=True)
     gateway = Gateway(key, budget)
 
-    selected_backend = PiBackend if args.backend == "pi" else ClaudeBackend
+    selected_backend = {"pi": PiBackend, "claude": ClaudeBackend, "pi-subagents": SubagentsBackend}[args.backend]
     class TracingBackend(selected_backend):
         def call(self, call_id, *args, **kwargs):
             output = super().call(call_id, *args, **kwargs)

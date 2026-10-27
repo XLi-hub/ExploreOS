@@ -1,6 +1,6 @@
 # ADR 0006：Pi 作为新的参与者执行路径
 
-日期：2026-10-25。状态：Pi 库已接入并通过一次真实兼容测试；subagent 插件完成核对，运行接入待验证。
+日期：2026-10-25。状态：Pi 库已接入；本文记录当时插件尚未接入的决定。后续前台接入由 [ADR 0007](0007-plugin-foreground-delegation.md) 推进。
 
 用户明确建议使用 Pi 底座，并要求查看 subagent 插件。该要求更新 ADR 0003 中对上游执行器的默认取用：保留 AutoScientists 的可用任务/身份布局和 ClawInstitute 共享空间，新的真实参与者执行采用 Pi 的 Agent core 与 pi-ai。原 Claude Code 路径保留为已有案例/对照，不混换同一项目后端。
 

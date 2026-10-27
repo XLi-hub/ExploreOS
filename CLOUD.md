@@ -7,7 +7,7 @@
 | 项目 | 值 |
 | --- | --- |
 | GitHub 仓库 | XLi-hub/autoscientists-engineering |
-| 当前开发分支 | codex/pi-memory-feedback，基于 codex/m1-open-exploration；M1 PR #3 尚未合并 |
+| 交付分支 | main（集成 PR #1 合并后）；新开发使用 codex/ 任务分支 |
 | 系统 | Linux x64；CI 使用 Ubuntu 24.04 |
 | Python | 3.11 |
 | Node.js | 22.19+，或更新的受支持版本 |
@@ -16,7 +16,7 @@
 | 默认服务 | 仅 ClawInstitute API，认证开启，独立开发数据库 |
 | 运行状态 | .runtime/；依赖虚拟环境为 .venv/，都不进入 Git |
 
-环境准备应选择包含当前 Pi/记忆增量的分支或合并后的分支。M0 PR #2 已合入开发集成分支，不能据此假定 main 同步。产品已命名 ExploreOS，实际 GitHub 改名因集成权限 403 待仓库所有者在 Settings 完成。
+PR #3/#4/#5 依次整合开放探索、Pi/记忆闭环和插件前台委派，再通过 PR #1 将完整开发集成分支交付到 main。PR #1 合并后的环境准备和验收使用 main；代码合并不表示 M2 质量评测已经完成。产品已命名 ExploreOS，实际 GitHub 改名因集成权限 403 待仓库所有者在 Settings 完成。
 
 在 Codex Cloud 创建环境时选择此仓库，并可粘贴：
 
@@ -43,7 +43,7 @@ bash scripts/cloud/setup.sh
 - pypi.org
 - files.pythonhosted.org
 
-若依赖需要额外下载域名，按失败日志添加对应目标；不要通过关闭 TLS 校验来绕过。默认 setup 不安装模型 CLI，不复制本机登录目录，也不读取模型密钥。推荐的真实执行器通过 bash scripts/cloud/setup_pi.sh 安装固定 Pi 1.4.0 库（Node >=22.19）；原 bash scripts/cloud/setup_claude.sh 保留安装 Claude Code 2.1.310。两者仅在当前 checkout 使用，安装不调用模型。真实模型执行还需访问 api.deepseek.com 并显式提供预算。
+若依赖需要额外下载域名，按失败日志添加对应目标；不要通过关闭 TLS 校验来绕过。默认 setup 不安装模型 CLI，不复制本机登录目录，也不读取模型密钥。推荐的真实执行器通过 bash scripts/cloud/setup_pi.sh 安装固定 Pi 1.4.0 库（Node >=22.19）；插件前台路径另用 bash scripts/cloud/setup_subagents.sh 安装固定 Coding Agent 宿主和 pi-subagents；原 bash scripts/cloud/setup_claude.sh 保留安装 Claude Code 2.1.310。这些依赖仅在当前 checkout 使用，安装不调用模型。真实模型执行还需访问 api.deepseek.com 并显式提供预算。
 
 服务启动时在当前云任务内生成开发 token。不要在环境模板发布前启动并遗留一份要被不同任务共享的数据库/token；环境准备中的验证结束后应按第 5 节处理测试状态。
 
@@ -99,7 +99,7 @@ smoke 本身不证明真实智能体交流或并发原子性。新增 m0 seed �
 
 ## 6. M1 使用与后续验证
 
-新增 Pi 执行器与插件核对见 [Pi 底座](docs/pi-runtime.md)，旧认识/同伴质疑闭环见 [记忆复查](docs/memory-feedback.md)。
+插件前台路径见 [接入说明](docs/subagent-integration.md)，Pi 执行器与前期核对见 [Pi 底座](docs/pi-runtime.md)，旧认识/同伴质疑闭环见 [记忆复查](docs/memory-feedback.md)。
 
 M1 的机械测试、任意开放问题、暂停改向、材料增补、质疑、有限追加轮次与真实模型入口见 [验收指南](docs/acceptance-guide.md)。默认 advance 使用模拟代理，始终标记为机械运行；真实后端必须用新项目，不能与模拟结果混用。
 
@@ -113,7 +113,7 @@ M0 探针保留为历史入口。在已有结果的开发环境只需 verify，�
 
 新 M0 live 必须另行提供明确预算；密钥取自 DEEPSEEK_API_KEY 或隐藏输入。M1 共享预算池保留当前开发的历史预留，不因新项目或追加轮次而重置。预算准入记账不是供应商实际账单。未知请求保留额度，不盲重试。
 
-CI 定义：[ExploreOS cloud checks](.github/workflows/cloud-bootstrap.yml)。它执行固定依赖安装、数据库故障、并发、探索机制、API 与优雅重启检查；安装固定 Pi 库并以替身供应商验证 SDK，不安装 CC CLI，不使用模型密钥，不发起真实模型调用。服务日志和私有研究产物不会上传。
+CI 定义：[ExploreOS cloud checks](.github/workflows/cloud-bootstrap.yml)。它执行固定依赖安装、数据库故障、并发、探索机制、API 与优雅重启检查；安装固定 Pi 库与插件宿主并以替身供应商验证 SDK/前台委派，不安装 CC CLI，不使用模型密钥，不发起真实模型调用。服务日志和私有研究产物不会上传。
 
 ## 7. 官方配置参考
 
