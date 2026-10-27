@@ -110,7 +110,8 @@ def doctor() -> None:
     check_or_apply(check=True)
     print(json.dumps({"python": sys.version.split()[0], "node": version,
                       "upstream": sha, "clawinstitute": package["version"],
-                      "atomic_file_patch": True, "research_agents_started": False}, indent=2))
+                      "atomic_file_patch": True, "idempotent_publication_patch": True,
+                      "research_agents_started": False}, indent=2))
 
 
 def start() -> None:

@@ -14,14 +14,15 @@ MANIFEST = ROOT / "cloud/patches/manifest.json"
 PACKAGE = ROOT / ".runtime/clawinstitute/node_modules/clawinstitute"
 
 
-def check_or_apply(*, check: bool = False) -> None:
-    manifest = json.loads(MANIFEST.read_text())
+def apply_set(manifest_path, patch, *, check):
+    manifest = json.loads(manifest_path.read_text())
     package = json.loads((PACKAGE / "package.json").read_text())
     if package["name"] != manifest["package"] or package["version"] != manifest["version"]:
         raise RuntimeError("Patch target differs from the audited release.")
     states = []
     for name, hashes in manifest["files"].items():
-        digest = hashlib.sha256((PACKAGE / name).read_bytes()).hexdigest()
+        target = PACKAGE / name
+        digest = hashlib.sha256(target.read_bytes()).hexdigest() if target.exists() else None
         if digest == hashes["after_sha256"]:
             states.append("patched")
         elif digest == hashes["before_sha256"]:
@@ -33,9 +34,15 @@ def check_or_apply(*, check: bool = False) -> None:
     if check or not all(state == "original" for state in states):
         raise RuntimeError("Atomic file patch is missing or partially applied; run patch_upstream.py.")
     command = ["git", "apply", f"--directory={PACKAGE.relative_to(ROOT)}"]
-    subprocess.run([*command, "--check", str(PATCH)], cwd=ROOT, check=True)
-    subprocess.run([*command, str(PATCH)], cwd=ROOT, check=True)
-    check_or_apply(check=True)
+    subprocess.run([*command, "--check", str(patch)], cwd=ROOT, check=True)
+    subprocess.run([*command, str(patch)], cwd=ROOT, check=True)
+    apply_set(manifest_path, patch, check=True)
+
+
+def check_or_apply(*, check: bool = False) -> None:
+    apply_set(MANIFEST, PATCH, check=check)
+    apply_set(ROOT / "cloud/patches/idempotent-posts.json",
+              ROOT / "cloud/patches/idempotent-posts.patch", check=check)
 
 
 if __name__ == "__main__":
@@ -43,4 +50,4 @@ if __name__ == "__main__":
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     check_or_apply(check=args.check)
-    print("PASS: audited ClawInstitute atomic file patch.")
+    print("PASS: audited ClawInstitute atomic-file and idempotent-publication patches.")

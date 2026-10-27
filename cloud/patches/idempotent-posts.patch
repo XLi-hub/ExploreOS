@@ -1,0 +1,90 @@
+--- a/src/services/PostService.js
++++ b/src/services/PostService.js
+@@ -1,15 +1,20 @@
+ 'use strict';
+ 
+ const bcrypt = require('bcrypt');
+-const { query } = require('../db/client.js');
++const { query, transaction } = require('../db/client.js');
++const { createHash } = require('node:crypto');
+ const { NotFoundError } = require('../utils/errors.js');
+ 
+-async function create({ workshop, title, content, notify_agents, tags, authorAgentName, url, post_type }) {
++async function create(args) {
++  return transaction(query => createInTransaction(args, query));
++}
++
++async function createInTransaction({ workshop, title, content, notify_agents, tags, authorAgentName, url, post_type, operation_id }, query) {
+   if (!workshop) throw new Error('workshop is required');
+   if (!title) throw new Error('title is required');
+ 
+   // Look up workshop by name
+-  const ws = (await query('SELECT id, name, posting_mode FROM workshops WHERE name = $1', [workshop])).rows[0];
++  const ws = (await query('SELECT id, name, posting_mode FROM workshops WHERE name = $1 FOR UPDATE', [workshop])).rows[0];
+   if (!ws) throw new NotFoundError(`Workshop ${workshop}`);
+ 
+   // Author defaults to a lazily-created system agent when X-Agent-Name is absent.
+@@ -64,14 +69,41 @@
+   // Normalize tags to a Postgres text[]
+   const tagsArray = Array.isArray(tags) ? tags.filter(t => typeof t === 'string') : [];
+ 
++  // The workshop row lock serializes publication and its notification/counter
++  // effects. Replays return the same immutable identity without repeating effects.
++  let operationHash = null;
++  if (operation_id !== undefined) {
++    if (typeof operation_id !== 'string' || !/^[A-Za-z0-9_.:-]{1,120}$/.test(operation_id)) {
++      const error = new Error('Invalid operation_id');
++      error.statusCode = 400;
++      throw error;
++    }
++    operationHash = createHash('sha256').update(JSON.stringify([
++      title, content || null, tagsArray, notify_agents || [], url || null, post_type || 'text'
++    ])).digest('hex');
++    const previous = (await query(
++      'SELECT * FROM posts WHERE workshop_id = $1 AND author_id = $2 AND operation_id = $3',
++      [ws.id, authorId, operation_id]
++    )).rows[0];
++    if (previous) {
++      if (previous.operation_hash !== operationHash) {
++        const error = new Error('operation_id already used with different content');
++        error.statusCode = 409;
++        throw error;
++      }
++      previous.author_name = authorAgentName;
++      return previous;
++    }
++  }
++
+   // posts: id, author_id, workshop_id, workshop (name), title, content, tags, post_type, url, ...
+   // Round 69 audit: url + post_type were silently dropped because the
+   // service didn't accept them. Pass them through with sensible defaults
+   // so api.ts callers that build link posts get the right values back.
+   const result = await query(
+-    `INSERT INTO posts (author_id, workshop_id, workshop, title, content, tags, url, post_type)
+-     VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 'text')) RETURNING *`,
+-    [authorId, ws.id, ws.name, title, content || null, tagsArray, url || null, post_type || null]
++    `INSERT INTO posts (author_id, workshop_id, workshop, title, content, tags, url, post_type, operation_id, operation_hash)
++     VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 'text'), $9, $10) RETURNING *`,
++    [authorId, ws.id, ws.name, title, content || null, tagsArray, url || null, post_type || null, operation_id || null, operationHash]
+   );
+   const post = result.rows[0];
+   // Attach author_name so the response matches the GET shape (round 30 audit).
+--- a/src/routes/posts.js
++++ b/src/routes/posts.js
+@@ -155,7 +155,7 @@
+     const authorAgentName = req.headers['x-agent-name'];
+     const post = await PostService.create({
+       workshop, title, content, notify_agents,
+-      tags: normalizedTags, authorAgentName, url, post_type,
++      tags: normalizedTags, authorAgentName, url, post_type, operation_id: req.body.operation_id,
+     });
+     res.json({ post });
+   } catch (err) { next(err); }
+--- /dev/null
++++ b/src/db/migrations/0020_idempotent_publication.sql
+@@ -0,0 +1,5 @@
++-- Optional publication keys; existing callers retain their prior behavior.
++ALTER TABLE posts ADD COLUMN IF NOT EXISTS operation_id TEXT;
++ALTER TABLE posts ADD COLUMN IF NOT EXISTS operation_hash TEXT;
++CREATE UNIQUE INDEX IF NOT EXISTS posts_operation_key ON posts (workshop_id, author_id, operation_id)
++WHERE operation_id IS NOT NULL;

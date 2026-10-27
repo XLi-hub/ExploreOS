@@ -12,5 +12,9 @@
     "node_minimum_major": 22,
     "python_minimum": "3.11"
   },
-  "stage": "cloud_bootstrap_no_model_execution"
+  "stage": "m1_open_exploration_prototype",
+  "claude_code": {
+    "version": "2.1.310",
+    "npm_integrity": "sha512-EySpBwaocdU1nc9r7JH+GOlnMsbXc764d3HX7NL8fr7qqdxz2MiXI9hqf/rzeE/XgU23HHFltIqhb+Fq6G1CVw=="
+  }
 }
