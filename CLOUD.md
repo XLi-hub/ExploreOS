@@ -7,7 +7,7 @@
 | 项目 | 值 |
 | --- | --- |
 | GitHub 仓库 | XLi-hub/autoscientists-engineering |
-| 当前开发分支 | codex/pi-subagents-integration，基于 codex/pi-memory-feedback；前置 PR #3/#4 尚未合并 |
+| 交付分支 | main（集成 PR #1 合并后）；新开发使用 codex/ 任务分支 |
 | 系统 | Linux x64；CI 使用 Ubuntu 24.04 |
 | Python | 3.11 |
 | Node.js | 22.19+，或更新的受支持版本 |
@@ -16,7 +16,7 @@
 | 默认服务 | 仅 ClawInstitute API，认证开启，独立开发数据库 |
 | 运行状态 | .runtime/；依赖虚拟环境为 .venv/，都不进入 Git |
 
-环境准备应选择包含当前 Pi/记忆增量的分支或合并后的分支。M0 PR #2 已合入开发集成分支，不能据此假定 main 同步。产品已命名 ExploreOS，实际 GitHub 改名因集成权限 403 待仓库所有者在 Settings 完成。
+PR #3/#4/#5 依次整合开放探索、Pi/记忆闭环和插件前台委派，再通过 PR #1 将完整开发集成分支交付到 main。PR #1 合并后的环境准备和验收使用 main；代码合并不表示 M2 质量评测已经完成。产品已命名 ExploreOS，实际 GitHub 改名因集成权限 403 待仓库所有者在 Settings 完成。
 
 在 Codex Cloud 创建环境时选择此仓库，并可粘贴：
 
