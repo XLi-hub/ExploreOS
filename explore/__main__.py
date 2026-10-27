@@ -8,7 +8,7 @@ from pathlib import Path
 from scripts.cloud.runtime import ROOT
 from scripts.probe_native import session_budget
 from .engine import MODES, Project
-from .models import ClaudeBackend, Gateway, SimulatedBackend
+from .models import ClaudeBackend, Gateway, PiBackend, SimulatedBackend
 from .store import Client
 
 
@@ -18,14 +18,14 @@ def main():
     create = sub.add_parser("create")
     create.add_argument("name")
     create.add_argument("--mode", choices=MODES, default="collaborative")
-    create.add_argument("--scenario", choices=("split", "merge"), default="split")
+    create.add_argument("--scenario", choices=("split", "merge", "feedback"), default="split")
     create.add_argument("--question", help="Any open question; no metric or dataset required")
     create.add_argument("--source", action="append", default=[], help="Explicitly allowed UTF-8 material path; repeat for more materials")
-    for name in ("advance", "status", "pause", "resume", "cancel", "reconcile", "export", "steer", "add-source", "memory", "extend", "challenge", "retry"):
+    for name in ("advance", "status", "pause", "resume", "cancel", "reconcile", "export", "steer", "add-source", "memory", "reviews", "extend", "challenge", "retry"):
         command = sub.add_parser(name)
         command.add_argument("name")
         if name == "advance":
-            command.add_argument("--backend", choices=("simulated", "claude"), default="simulated")
+            command.add_argument("--backend", choices=("simulated", "pi", "claude"), default="simulated")
             command.add_argument("--budget-cny", type=float, help="Explicit budget for first paid run; existing pools are never reset")
         if name == "steer":
             command.add_argument("question")
@@ -53,11 +53,12 @@ def main():
             raise ValueError("Project name must resolve directly below .research")
         project = Project(client, directory)
         if args.command == "advance":
-            if args.backend == "claude":
+            if args.backend in ("pi", "claude"):
                 key = os.environ.get("DEEPSEEK_API_KEY") or getpass.getpass("DeepSeek API key (hidden): ")
                 gateway = Gateway(key, session_budget(client, limit=args.budget_cny))
                 try:
-                    project.advance(ClaudeBackend(ROOT, gateway))
+                    backend = PiBackend if args.backend == "pi" else ClaudeBackend
+                    project.advance(backend(ROOT, gateway))
                 finally:
                     gateway.close()
             else:
@@ -80,6 +81,12 @@ def main():
             state, _ = project.file.read()
             print(json.dumps({actor: Memory(project.directory / "agents" / actor / "memory").index()
                               for actor in state["agents"]}, ensure_ascii=False, indent=2))
+        elif args.command == "reviews":
+            state, _ = project.file.read()
+            print(json.dumps({"findings": list(state.get("knowledge", {}).values()),
+                              "reviews": state.get("reviews", []),
+                              "qualification": "Author responses preserve objections; no claim has been automatically verified"},
+                             ensure_ascii=False, indent=2))
         elif args.command in ("pause", "resume", "cancel", "steer"):
             project.control(args.command, getattr(args, "question", None))
     print(json.dumps(project.status(), ensure_ascii=False, indent=2))

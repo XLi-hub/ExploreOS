@@ -6,18 +6,22 @@ on:
       - 'cloud/**'
       - 'scripts/cloud/**'
       - 'scripts/*.py'
+      - 'scripts/*.mjs'
       - 'explore/**'
       - 'tests/**'
       - 'examples/open-exploration/**'
+      - 'examples/feedback/**'
       - '.github/workflows/cloud-bootstrap.yml'
   pull_request:
     paths:
       - 'cloud/**'
       - 'scripts/cloud/**'
       - 'scripts/*.py'
+      - 'scripts/*.mjs'
       - 'explore/**'
       - 'tests/**'
       - 'examples/open-exploration/**'
+      - 'examples/feedback/**'
       - '.github/workflows/cloud-bootstrap.yml'
 permissions:
   contents: read
@@ -36,9 +40,11 @@ jobs:
         with:
           python-version: '3.11'
       - name: Check shell syntax
-        run: bash -n scripts/cloud/setup.sh
+        run: bash -n scripts/cloud/setup.sh scripts/cloud/setup_pi.sh scripts/cloud/setup_claude.sh
       - name: Install audited upstream runtime
         run: bash scripts/cloud/setup.sh
+      - name: Install pinned Pi libraries without model calls
+        run: bash scripts/cloud/setup_pi.sh
       - name: Check Python syntax
         run: .venv/bin/python -m compileall -q scripts explore tests
       - name: Check transaction rollback, concurrent files and bounded execution mechanics

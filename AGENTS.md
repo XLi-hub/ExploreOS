@@ -12,7 +12,7 @@
 - Read CLOUD.md first for setup, service management and the actual bootstrap check commands.
 - Read README.md, docs/product-design.md, docs/architecture.md, docs/evaluation.md and the current milestone in docs/roadmap.md before implementation.
 - ADR 0002 supersedes ADR 0001; ADR 0003 refines the implementation route to upstream-first reuse. Preserve prior decisions as history.
-- Default to adapting AutoScientists + ClawInstitute. Read docs/upstream-reuse.md before adding a shared-state service, scheduler or UI; reuse existing capabilities and implement only verified gaps.
+- Reuse AutoScientists task/identity layout and ClawInstitute shared storage; the user now prefers Pi for execution (ADR 0006). Read docs/upstream-reuse.md before adding a shared-state service, scheduler or UI; reuse existing capabilities and implement only verified gaps.
 - The original 日常探索模式 conversation body has not been retrieved. Do not invent its contents.
 - User instructions in the active session take precedence over these conventions.
 
@@ -53,4 +53,8 @@
 
 ## Current next step
 
-M0 was merged into codex/open-exploration-design. M1 on codex/m1-open-exploration implements a bounded upstream launcher adapter, Claude Code/DeepSeek execution, publication recovery, revisioned questions and qualified indexed memory. Read docs/product-core.md, docs/m1-validation.md and docs/acceptance-guide.md. User review of content quality is pending. Next validate old failures/contests actually improving later actions on open tasks, freeze the protocol for M2 comparisons and measure convergence/cost as well as benefit. Preserve ClawInstitute as shared authority; do not replace the substrate or broaden tools without a verified need. Real calls require explicit budget; CI and default CLI are zero-model. Run the documented cloud checks plus python -m unittest discover -s tests -v with the owned API running. Actual GitHub slug remains autoscientists-engineering because repository rename was denied by the integration (403); product/package branding is ExploreOS.
+M0 was merged into codex/open-exploration-design; M1 PR #3 remains a quality-review candidate. The current follow-up branch is codex/pi-memory-feedback. Read docs/product-core.md, docs/m1-validation.md, docs/pi-runtime.md, docs/memory-feedback.md and ADRs 0005/0006. Pi Agent core + pi-ai 1.4.0 is the new real execution path; use setup_pi.sh for local/CI SDK tests with Node >=22.19. Claude remains a legacy/control option. Do not relabel old CC cases as Pi or mix backends within a project.
+
+The pi-subagents 0.82.0 extension has been inspected but is not integrated. Use its public seams when verified needs justify the Coding Agent extension host; do not recreate its general workflows or fleet. Preserve ClawInstitute as shared-content authority and define execution ownership before delegating runtime state to a plugin.
+
+Review responses are attributed author decisions, never automatic truth or resolution of objections. Peer objections and author reviews commit with the existing publication CAS. Continue validating real quality separately from mechanics. Real calls require explicit shared budget; CI/default examples are zero-model. Run documented cloud checks plus python -m unittest discover -s tests -v with the owned API and pinned Pi libraries installed. Long-term/M2 quality evaluations remain pending. Actual GitHub slug remains autoscientists-engineering because repository rename was denied by the integration (403); product/package branding is ExploreOS.

@@ -8,6 +8,7 @@
 
 ~~~bash
 bash scripts/cloud/setup.sh
+bash scripts/cloud/setup_pi.sh
 .venv/bin/python scripts/cloud/runtime.py start
 node scripts/cloud/test_atomic_files.cjs
 .venv/bin/python -m unittest discover -s scripts/cloud -p 'test_*.py' -v
@@ -60,17 +61,29 @@ node scripts/cloud/test_atomic_files.cjs
 
 ID 从 status/export 中取真实值。新增来源不覆盖旧快照；质疑保留原主张与署名，追加轮次不会重置模型预算。
 
+## 检查旧认识如何被重新使用
+
+~~~bash
+.venv/bin/python scripts/demo_feedback.py --name feedback_demo
+.venv/bin/python -m explore reviews feedback_demo
+.venv/bin/python -m explore export feedback_demo
+~~~
+
+这是零模型的两轮机械示例：脚本加入合成反例，记录质疑与改向，模拟参与者再读原主张与新材料，保存修订关系和实际取回的旧笔记 ID。查看简报的“问题版本”“质疑与适用边界”“旧认识复查”；名字已存在时换一个。
+
+真实参与者可以保留、修订、撤回或暂不判断，也可以不选复查；协作模式可提出同伴质疑。作者回应不意味着异议已经解决，修订后的内容仍需检查。详细来源、状态规则与测试见 [课题记忆复查](memory-feedback.md)。
+
 ## 实际模型调用是单独动作
 
 先取得明确预算，再安装此 checkout 独立的执行器：
 
 ~~~bash
-bash scripts/cloud/setup_claude.sh
+bash scripts/cloud/setup_pi.sh
 .venv/bin/python -m explore create personal_live --question "个人知识系统怎样支持经常改变的问题？" --source examples/open-exploration/notes.example.md
-.venv/bin/python -m explore advance personal_live --backend claude --budget-cny 5
+.venv/bin/python -m explore advance personal_live --backend pi --budget-cny 5
 ~~~
 
-上例创建新的真实模型项目。系统拒绝用模拟结果填补真实模型案例，也拒绝在同一项目混换执行后端。
+上例使用新的 Pi Agent 执行器；运行库与 subagent 插件核对见 [Pi 底座](pi-runtime.md)。原 CC 适配仍可显式用 --backend claude；既有项目保持原后端。上例创建新的真实模型项目。系统拒绝用模拟结果填补真实模型案例，也拒绝在同一项目混换执行后端。
 
 密钥优先取云环境的 `DEEPSEEK_API_KEY`；未配置时终端隐藏输入。不要把真实密钥放进命令行或 Git。首次付费运行需要明确预算；已有共享预算池不会因再次传入参数而重置。
 

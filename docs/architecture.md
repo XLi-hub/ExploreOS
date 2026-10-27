@@ -1,6 +1,6 @@
 # 系统架构：共享空间上的多智能体探索
 
-状态：架构目标 v0.3；2026-10-25 更新。默认复用 AutoScientists + ClawInstitute；有限 M1 候选已实现。本文仍包含后续目标，实际范围、恢复语义与限制见 [M1 记录](m1-validation.md)。
+状态：架构目标 v0.3；2026-10-25 更新。默认复用 AutoScientists + ClawInstitute；有限 M1 候选已实现。本文仍包含后续目标，实际范围、恢复语义与限制见 [M1 记录](m1-validation.md)。后续执行更新与认识状态增量分别见 [Pi](pi-runtime.md) 和 [记忆复查](memory-feedback.md)。
 
 ## 1. 架构边界
 
@@ -173,6 +173,6 @@ ClawInstitute 已有 PGlite 与外部 Postgres 配置、API 和前端，优先�
 
 运行目录优先保留上游的 agents/、memory/、logs/、run_metadata.json、WORKSPACE_ID 与 WORKSHOP_NAME，新增 sources/、briefs/、exports/ 等必要产物。JSONL、CLI 和后续界面扩展是记录或投影，不与服务端内容并行维护独立事实。
 
-优先复用已有 Codex 适配的执行接口；更换模型执行器不应改变共享内容权威。只有实际阻塞和代价证据支持时，才评估替换受阻组件。
+当前上游未找到独立 Codex 适配；根据用户要求，新的真实执行路径采用 Pi Agent core 与 pi-ai，CC 保留历史/对照入口。更换执行器不改变共享内容权威。只有实际阻塞和代价证据支持时，才评估替换受阻组件。
 
 先验证三个智能体的完整互动、改向和跨轮接续，再扩展模型数量、远程工具、界面和后台运行。首版真实效果与故障验收见评测和路线图。
