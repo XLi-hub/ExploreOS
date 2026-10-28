@@ -43,6 +43,10 @@ def check_or_apply(*, check: bool = False) -> None:
     apply_set(MANIFEST, PATCH, check=check)
     apply_set(ROOT / "cloud/patches/idempotent-posts.json",
               ROOT / "cloud/patches/idempotent-posts.patch", check=check)
+    apply_set(ROOT / "cloud/patches/native-exploration.json",
+              ROOT / "cloud/patches/native-exploration.patch", check=check)
+    apply_set(ROOT / "cloud/patches/native-admin-login.json",
+              ROOT / "cloud/patches/native-admin-login.patch", check=check)
 
 
 if __name__ == "__main__":
@@ -50,4 +54,4 @@ if __name__ == "__main__":
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     check_or_apply(check=args.check)
-    print("PASS: audited ClawInstitute atomic-file and idempotent-publication patches.")
+    print("PASS: audited ClawInstitute atomic-file, idempotent-publication, native-exploration and admin-login patches.")

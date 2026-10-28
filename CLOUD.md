@@ -6,17 +6,17 @@
 
 | 项目 | 值 |
 | --- | --- |
-| GitHub 仓库 | XLi-hub/autoscientists-engineering |
+| GitHub 仓库 | XLi-hub/ExploreOS |
 | 交付分支 | main（集成 PR #1 合并后）；新开发使用 codex/ 任务分支 |
 | 系统 | Linux x64；CI 使用 Ubuntu 24.04 |
 | Python | 3.11 |
 | Node.js | 22.19+，或更新的受支持版本 |
 | GPU | 不需要 |
 | 起步所需模型密钥 | 无 |
-| 默认服务 | 仅 ClawInstitute API，认证开启，独立开发数据库 |
+| 默认服务 | ClawInstitute API 与原生前端，认证开启，独立开发数据库 |
 | 运行状态 | .runtime/；依赖虚拟环境为 .venv/，都不进入 Git |
 
-PR #3/#4/#5 依次整合开放探索、Pi/记忆闭环和插件前台委派，再通过 PR #1 将完整开发集成分支交付到 main。PR #1 合并后的环境准备和验收使用 main；代码合并不表示 M2 质量评测已经完成。产品已命名 ExploreOS，实际 GitHub 改名因集成权限 403 待仓库所有者在 Settings 完成。
+PR #3/#4/#5 依次整合开放探索、Pi/记忆闭环和插件前台委派，再通过 PR #1 将完整开发集成分支交付到 main。PR #1 合并后的环境准备和验收使用 main；代码合并不表示 M2 质量评测已经完成。当前远端名称已确认是 XLi-hub/ExploreOS，旧改名权限失败仅保留为历史。
 
 在 Codex Cloud 创建环境时选择此仓库，并可粘贴：
 
@@ -53,7 +53,7 @@ bash scripts/cloud/setup.sh
 2. 下载固定 AutoScientists commit 的稀疏工作副本，保留 README、启动/运行文档、requirements 和 system；不下载科学任务数据集。
 3. 创建独立 .venv，安装固定直接 Python 依赖。
 4. 校验已审阅 ClawInstitute 发布包 SHA-256，将固定 0.1.3 版本安装到 .runtime/clawinstitute。
-5. 核对修补前文件指纹并应用受版本控制的事务/条件写及帖子幂等补丁；检查版本与入口，记录已安装 Python 包，不启动后台服务。
+5. 核对修补前文件指纹并应用受版本控制的事务/条件写、帖子幂等及原生探索入口补丁；检查版本与入口，记录已安装 Python 包，不启动后台服务。
 
 固定版本见 [cloud/versions.json](cloud/versions.json)。上游副本只是忽略目录里的外部依赖，不是复制进本仓库的产品代码。修改上游时先形成可跟踪的覆盖/补丁方案，不能把唯一改动留在 .runtime。
 
@@ -83,9 +83,9 @@ Start skill 可写：
 
 默认 API 为 http://127.0.0.1:3000/api/v1。helper 仅管理当前 checkout 的进程和隔离数据库，不连接外部 DATABASE_URL；通过进程身份校验避免停止其他服务。
 
-已有前端留在安装包中，默认跳过。若云端工具支持相应访问方式，可用 EXPLORE_FRONTEND=1 启动并单独验证；当前 API CI 不等于前端浏览器验收，也不提供公共托管链接。普通编码任务无需浏览器界面。
+默认启动发布包已有的前端（3001），ExploreOS 挂载于 `/api/v1/exploreos/ui`，复用其既有 API 重写与登录。`EXPLORE_FRONTEND=0` 可仅启动 API；CI 明确使用该模式，API 检查不冒充前端浏览器验收。没有公共托管链接。
 
-同一 VM 中需要多个服务时，分别设置 EXPLORE_API_PORT 与 EXPLORE_FRONTEND_PORT。不同云任务各有自己的文件与运行状态；两个账号依靠分支、提交和 PR 协作，不共享 .runtime 数据库。
+API-only 实例可设置 EXPLORE_API_PORT。固定 Next 包的既有重写目标为 API 3000，因此启用原生前端时必须保留 API 3000，前端端口可设 EXPLORE_FRONTEND_PORT。不同云任务各有自己的文件与运行状态；两个账号依靠分支、提交和 PR 协作，不共享 .runtime 数据库。
 
 ## 5. 验证范围与环境发布
 
@@ -98,6 +98,8 @@ smoke 本身不证明真实智能体交流或并发原子性。新增 m0 seed �
 研究结果需要独立导出和持久存储规划，不能把开发环境快照当作常驻研究服务。
 
 ## 6. M1 使用与后续验证
+
+后续交付还包含 [ClawInstitute 内探索视图](docs/workbench.md)、[固定评测驱动](docs/evaluation-pilot.md) 和 [有限持续运行](docs/daily-use.md)。它们继续使用同一服务和固定依赖，评测与日常唤醒默认零模型、有限轮数。完整工程证据和未完成的真实验收见 [路线图记录](docs/roadmap-validation.md)。
 
 插件前台路径见 [接入说明](docs/subagent-integration.md)，Pi 执行器与前期核对见 [Pi 底座](docs/pi-runtime.md)，旧认识/同伴质疑闭环见 [记忆复查](docs/memory-feedback.md)。
 

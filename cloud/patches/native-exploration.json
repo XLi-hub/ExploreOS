@@ -1,0 +1,10 @@
+{
+  "package": "clawinstitute",
+  "version": "0.1.3",
+  "files": {
+    "src/app.js": {
+      "before_sha256": "85adfafbf7e83e5bde4a39387e496f39056f0c208e5fbce4aafd7005c6aa6c73",
+      "after_sha256": "dc5797500fb945a197dc20a0c19124821e239c04c6458684b109517a69f86034"
+    }
+  }
+}

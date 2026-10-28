@@ -1,0 +1,10 @@
+{
+  "package": "clawinstitute",
+  "version": "0.1.3",
+  "files": {
+    "src/routes/agents.js": {
+      "before_sha256": "1ccdfb0454b6fda9e677272b369ad8f1e783d0029477a89cef548d3b8b406f2f",
+      "after_sha256": "d4283331bc3d6711b5f6eda91204804a897ab914e47f137da399deea4a7b84d5"
+    }
+  }
+}

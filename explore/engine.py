@@ -12,10 +12,10 @@ import uuid
 from scripts.cloud.runtime import ROOT
 from .bootstrap import launch
 from .memory import Memory, select_shared_memory
-from . import reviews
+from . import assessments, cross_memory, policy, reviews
 from .subagents import read_receipt, terminal as plugin_terminal
 from .models import REAL_BACKENDS, parse_json_output
-from .store import JsonFile, atomic_local
+from .store import Conflict, JsonFile, atomic_local
 
 MODES = ("single", "multiple_perspectives", "independent", "collaborative")
 PERSPECTIVES = ["澄清假设、竞争解释与缺失材料；可以自行更换视角",
@@ -63,10 +63,20 @@ class Project:
         self.file = JsonFile(client, self.metadata["workspace_id"], "exploration/state.json")
 
     @classmethod
-    def create(cls, client, name, *, mode="collaborative", scenario="split", max_rounds=2, question=None, sources=None, question_author="user"):
+    def create(cls, client, name, *, mode="collaborative", scenario="split", max_rounds=2, question=None, sources=None, question_author="user", semantic_policy=None, max_invocations_per_round=None, participants=3, max_concurrency=2):
         if mode not in MODES:
             raise ValueError("Unknown evaluation mode")
-        directory, metadata = launch(client, name, question)
+        semantic_policy = policy.normalize(semantic_policy)
+        if type(participants) is not int or not 1 <= participants <= 8 or type(max_concurrency) is not int or not 1 <= max_concurrency <= 8:
+            raise ValueError("Configure 1–8 participants and 1–8 concurrent calls")
+        max_invocations_per_round = max_invocations_per_round if max_invocations_per_round is not None else max(12, participants * 4)
+        if type(max_rounds) is not int or not 1 <= max_rounds <= 20:
+            raise ValueError("Configure 1–20 finite rounds")
+        if type(max_invocations_per_round) is not int or not 3 <= max_invocations_per_round <= 40:
+            raise ValueError("Round invocation ceiling must be 3–40")
+        if mode not in ("single", "multiple_perspectives") and max_invocations_per_round < participants * 3:
+            raise ValueError("Invocation ceiling must allow each participant's three baseline phases")
+        directory, metadata = launch(client, name, question, participants=participants)
         project = cls(client, directory)
         actors = metadata["agents"][:1] if mode in ("single", "multiple_perspectives") else metadata["agents"]
         snapshots = {}
@@ -78,19 +88,23 @@ class Project:
                            {"content": json.dumps(source, ensure_ascii=False)}, version=0)
             snapshots[source["id"]] = {key: value for key, value in source.items() if key != "lines"}
         project.file.create({"kind": "open_exploration_v1", "name": name, "mode": mode, "scenario": scenario,
-            "status": "active", "max_rounds": max_rounds, "max_invocations_per_round": 12,
+            "status": "active", "max_rounds": max_rounds, "max_invocations_per_round": max_invocations_per_round,
+            "semantic_policy": semantic_policy,
+            "max_concurrency": max_concurrency,
             "question_revisions": [{"number": 1, "text": question or "如何让本项目从多智能体演示走向可持续、可核对的开放探索？", "author": question_author if question else "user_fixture"}],
-            "agents": {actor: {"direction": None, "cursor": 0, "perspective": PERSPECTIVES[i]} for i, actor in enumerate(actors)},
+            "agents": {actor: {"direction": None, "cursor": 0, "perspective": PERSPECTIVES[i % len(PERSPECTIVES)]} for i, actor in enumerate(actors)},
             "directions": {}, "changes": {}, "direction_history": [], "sources": snapshots, "rounds": [],
             "calls": {}, "posts": [], "knowledge": {}, "reviews": [], "events": []})
         return project
 
     def add_source(self, path, title=None):
+        self.assert_input_change_allowed(self.file.read()[0])
         source_id = "source_" + uuid.uuid4().hex[:12]
         source = source_snapshot(source_id, title or Path(path).name, str(path), 1, 80)
         self.client.request("PUT", f"/workspaces/{self.file.workspace}/files/sources/{source_id}.json",
                             {"content": json.dumps(source, ensure_ascii=False)}, version=0)
         def add(state):
+            self.assert_input_change_allowed(state)
             state["sources"][source_id] = {key: value for key, value in source.items() if key != "lines"}
             self.event(state, "source_added", source_id=source_id, sha256=source["sha256"])
             return source_id
@@ -99,12 +113,20 @@ class Project:
     def event(self, state, kind, **values):
         state["events"].append({"sequence": len(state["events"]) + 1, "kind": kind, "time_ns": time.time_ns(), **values})
 
+    @staticmethod
+    def assert_input_change_allowed(state, *, after_completion=False):
+        complete = (len(state["rounds"]) == state["max_rounds"] and
+                    all(r["status"] == "completed" for r in state["rounds"]))
+        if state.get("evaluation_binding") and not (after_completion and complete):
+            raise ValueError("Evaluation inputs are frozen; use a new campaign for semantic changes")
+
     def status(self):
         state, version = self.file.read()
         return {"name": state["name"], "mode": state["mode"], "status": state["status"], "version": version,
                 "rounds": state["rounds"], "calls": {key: value["status"] for key, value in state["calls"].items()},
                 "directions": state["directions"], "changes": state["changes"],
                 "review_count": len(state.get("reviews", [])),
+                "source_assessment_summary": assessments.summary(state),
                 "unanswered_challenges": sum(not c.get("author_responses") for k in state.get("knowledge", {}).values()
                                              for c in k.get("challenges", []))}
 
@@ -121,6 +143,7 @@ class Project:
                     raise RuntimeError("Reconcile outstanding invocations before resuming")
                 state["status"] = "active"
             elif command == "steer":
+                self.assert_input_change_allowed(state)
                 if not question or not question.strip():
                     raise ValueError("A new user focus is required")
                 state["question_revisions"].append({"number": len(state["question_revisions"]) + 1,
@@ -133,18 +156,21 @@ class Project:
         if type(rounds) is not int or not 1 <= rounds <= 20:
             raise ValueError("Authorize 1–20 additional finite rounds at a time")
         def change(state):
+            self.assert_input_change_allowed(state)
             state["max_rounds"] += rounds
             self.event(state, "round_allowance_extended", additional_rounds=rounds,
                        qualification="Supplier budget is unchanged")
             return state["max_rounds"]
         return self.file.update("extend:" + uuid.uuid4().hex, change)
 
-    def retry(self, slot, reason, budget=None):
+    def retry(self, slot, reason, budget=None, *, expected_call_id=None):
         if not reason or not reason.strip():
             raise ValueError("An explicit correction/retry reason is required")
         ledger = budget.file.read()[0]["requests"] if budget else {}
         observed, _ = self.file.read()
         observed_call = observed["calls"][slot]
+        if expected_call_id is not None and observed_call["id"] != expected_call_id:
+            raise Conflict("The failed invocation changed; inspect its current attempt before authorizing retry")
         plugin_receipt = None
         if observed_call["backend"] == "pi-subagents":
             plugin_receipt = read_receipt(self.directory / "agents" / observed_call["actor"], observed_call["id"])
@@ -184,6 +210,7 @@ class Project:
 
     def challenge(self, target_post, reason, source_id=None, author_type="user"):
         state, _ = self.file.read()
+        self.assert_input_change_allowed(state, after_completion=True)
         entry = next((p for p in state["posts"] if p["id"] == target_post and p["phase"] == "reflect"), None)
         if not entry or not reason or not reason.strip():
             raise ValueError("Choose a finding in this project and provide a concrete challenge")
@@ -230,10 +257,123 @@ class Project:
             raise RuntimeError("Material changed after its project snapshot")
         return source
 
+    def call_details(self, call):
+        archive = call.get("archive")
+        if archive is None:
+            return call
+        record = json.loads(self.client.request("GET",
+            f"/workspaces/{self.file.workspace}/files/{archive['path']}")["content"])
+        if assessments.digest(record) != archive["sha256"] or record["call"]["id"] != call["id"]:
+            raise RuntimeError("Archived invocation differs from its immutable reference")
+        return {**record["call"], **call}
+
+    def archive_history(self, *, threshold=450_000):
+        """Move completed payloads to immutable upstream files before 1 MB writes.
+
+        Live/unknown attempts stay inline. Metadata, execution ownership and the
+        single content authority are unchanged; this is not another database.
+        """
+        state, _ = self.file.read()
+        if len(json.dumps({"content": json.dumps(state)}).encode()) <= threshold:
+            return 0
+        archived = {}
+        for group in ("calls", "retired_calls"):
+            for slot, call in state.get(group, {}).items():
+                if call.get("archive") or (group == "calls" and call["status"] != "completed"):
+                    continue
+                record = {"kind": "archived_invocation_v1", "call": call}
+                fingerprint = assessments.digest(record)
+                path = "execution/archive/" + hashlib.sha256(call["id"].encode()).hexdigest() + ".json"
+                endpoint = f"/workspaces/{self.file.workspace}/files/{path}"
+                try:
+                    self.client.request("PUT", endpoint, {"content": json.dumps(record, ensure_ascii=False)}, version=0)
+                except Conflict:
+                    if assessments.digest(json.loads(self.client.request("GET", endpoint)["content"])) != fingerprint:
+                        raise Conflict("Existing invocation archive differs from its fingerprint")
+                archived[(group, slot)] = (fingerprint, path, call)
+        if not archived:
+            return 0
+        def compact(current):
+            count = 0
+            for (group, slot), (fingerprint, path, observed) in archived.items():
+                actual = current.get(group, {}).get(slot)
+                if actual != observed:
+                    continue
+                actual["archive"] = {"path": path, "sha256": fingerprint}
+                for field in ("request", "output", "publication_payload"):
+                    actual.pop(field, None)
+                # Preserve all proven peer-read IDs before retiring full inputs.
+                actor = current["agents"].get(actual["actor"])
+                if actor is not None:
+                    provided = observed.get("request", {})
+                    actor["read_posts"] = sorted(set(actor.get("read_posts", [])) |
+                        {p["id"] for p in provided.get("peers", [])} | set(provided.get("contribution_views", {})))
+                count += 1
+            self.event(current, "invocation_payloads_archived", count=count)
+            return count
+        return self.file.update("archive-invocations:" + uuid.uuid4().hex, compact)
+
+    def audit_source(self, post_id):
+        state, _ = self.file.read()
+        if not any(p["id"] == post_id and p["phase"] == "reflect" for p in state["posts"]):
+            raise ValueError("Choose a finding in this project")
+        content = json.loads(self.client.request("GET", f"/posts/{post_id}")["content"])
+        evidence = content.get("evidence")
+        source = self.read_source(evidence["source_id"]) if evidence else None
+        return assessments.packet(state, post_id, content, source)
+
+    def assess_source(self, post_id, basis_sha256, verdict, reason, reviewer, scope, assessment_id=None):
+        assessment_id = assessment_id or uuid.uuid4().hex
+        if (not isinstance(assessment_id, str) or not 1 <= len(assessment_id) <= 64
+                or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in assessment_id)):
+            raise ValueError("Assessment ID must be 1–64 letters, digits, underscores or hyphens")
+        if any(not isinstance(value, str) for value in (reason, reviewer, scope)):
+            raise ValueError("Assessment reason, reviewer and scope must be text")
+        supplied = dict(target_post=post_id, basis_sha256=basis_sha256, verdict=verdict,
+                        reason=reason.strip(), reviewer=reviewer.strip(), scope=scope.strip())
+        def existing(state):
+            old = state.get("source_assessments", {}).get(assessment_id)
+            if old is not None and any(old[k] != v for k, v in supplied.items()):
+                raise Conflict("Assessment ID already belongs to a different judgment")
+            return old
+        state, _ = self.file.read()
+        if existing(state) is not None:
+            return assessment_id
+        self.assert_input_change_allowed(state, after_completion=True)
+        audit = self.audit_source(post_id)
+        if audit["basis_sha256"] != basis_sha256:
+            raise Conflict("Audit basis changed; inspect a fresh source-audit before assessing")
+        record = assessments.judgment(audit, verdict, reason, reviewer, scope)
+        basis_path = f"exploration/source-audits/{basis_sha256}.json"
+        archived = {"kind": "source_audit_basis_v1", "basis": audit["basis"], "basis_sha256": basis_sha256}
+        endpoint = f"/workspaces/{self.file.workspace}/files/{basis_path}"
+        try:
+            self.client.request("PUT", endpoint, {"content": json.dumps(archived, ensure_ascii=False)}, version=0)
+        except Conflict:
+            if json.loads(self.client.request("GET", endpoint)["content"]) != archived:
+                raise Conflict("Stored audit basis differs from its fingerprint")
+        record.update(id=assessment_id, basis_path=basis_path, created_ns=time.time_ns())
+        def change(state):
+            if existing(state) is not None:
+                return assessment_id
+            current = assessments.packet(state, post_id, audit["basis"]["content"], audit["basis"]["source"])
+            if current["basis_sha256"] != basis_sha256:
+                raise Conflict("Question or feedback changed during assessment; inspect a fresh source-audit")
+            records = state.setdefault("source_assessments", {})
+            finding = state["knowledge"][post_id]
+            finding["review_version"] = finding.get("review_version", 0) + 1
+            records[assessment_id] = {**record, "sequence": len(records) + 1,
+                                      "resulting_review_version": finding["review_version"]}
+            self.event(state, "source_support_assessed", assessment_id=assessment_id, target_post=post_id,
+                       verdict=verdict, reviewer=reviewer)
+            return assessment_id
+        return self.file.update("source-assessment:" + assessment_id + ":" + assessments.digest(supplied), change)
+
     def request_for(self, state, actor, phase, round_record):
+        semantic_policy = policy.normalize(state.get("semantic_policy"))
         review_context = None
         if phase == "reflect":
-            planned = state["calls"][f"r{round_record['number']}.plan.{actor}"]
+            planned = self.call_details(state["calls"][f"r{round_record['number']}.plan.{actor}"])
             chosen = reviews.selection(planned["output"], planned["request"])
             if chosen is not None:
                 review_context = reviews.context(self.client, state, chosen)
@@ -244,16 +384,20 @@ class Project:
                     post = self.client.request("GET", f"/posts/{entry['id']}")
                     peers.append({"id": post["id"], "actor": entry["actor"], "content": json.loads(post["content"])})
         memory_store = Memory(self.directory / "agents" / actor / "memory")
+        remembered = {note["id"] for note in memory_store.index()["notes"]}
         # Recover indexed private notes from immutable completed attempt outputs,
         # including projects created before the indexed-memory implementation.
         for call in state["calls"].values():
-            result = call.get("output", {})
-            if call["actor"] == actor and call["status"] == "completed" and result.get("summary"):
+            if call["actor"] != actor or call["status"] != "completed" or call["id"] in remembered:
+                continue
+            result = self.call_details(call).get("output", {})
+            if result.get("summary"):
                 memory_store.remember(call["id"], summary=result["summary"], question_revision=call["question_revision"],
                     source_ids=[result["evidence"]["source_id"]] if result.get("evidence") else [],
                     unresolved=result.get("unresolved", ""), peer_posts=result.get("influenced_by", []), review=result.get("review"))
         memory = memory_store.recall(state["question_revisions"][round_record["question_revision"] - 1]["text"],
-                                    preferred_ids=review_context["memory_note_ids"] if review_context else ())
+                                    preferred_ids=review_context["memory_note_ids"] if review_context else (),
+                                    include_execution_failures=semantic_policy["execution_failure_memory"])
         prior_findings = {call["id"]: state.get("knowledge", {}).get(call.get("post_id")) for call in state["calls"].values()}
         for note in memory.get("recalled_notes", []):
             finding = prior_findings.get(note["id"])
@@ -262,7 +406,8 @@ class Project:
                     ("post_id", "status", "question_revision", "superseded_by", "withdrawn_by") if key in finding}
         directions = list(state["directions"].values())
         if state["mode"] != "collaborative":
-            directions = [d for d in directions if actor in d["members"]]
+            directions = [d for d in directions if actor in d["members"] or
+                          d.get("created_by") == actor or d["id"] == "direction:" + actor]
         pending = [c for c in state["changes"].values() if c["status"] == "pending"] if peers else []
         request = {"phase": phase, "actor": actor, "round": round_record["number"],
                    "question_revision": round_record["question_revision"],
@@ -284,7 +429,10 @@ class Project:
         request["shared_memory"] = select_shared_memory(state, actor, phase, request["question"], request["question_revision"])
         request["review_candidates"] = reviews.candidates(state, actor, request["question"], request["question_revision"]) if phase == "plan" else []
         request["review_context"] = review_context
-        request["peer_critique_enabled"] = state["mode"] == "collaborative" and phase == "reflect"
+        request["peer_critique_enabled"] = state["mode"] == "collaborative" and phase == "reflect" and semantic_policy["peer_critique"]
+        request["semantic_policy"] = semantic_policy
+        request["direction_forks_enabled"] = True
+        request["cross_project_memory"] = cross_memory.recall(self.client, state) if phase != "propose" else []
         if phase == "propose":
             request["contract"] = {"direction": "一个暂定探索方向，避免声称已验证", "reason": "方向理由", "summary": "私有工作摘要"}
         elif phase == "plan":
@@ -296,7 +444,7 @@ class Project:
             request["contract"] = {"acknowledge": ["你明确同意的待处理变更ID；不同意或依据不足时留空"],
                                    "reason": "确认或保留意见的依据，不要为了完成流程而同意"}
         else:
-            plan = state["calls"][f"r{round_record['number']}.plan.{actor}"]["output"]
+            plan = self.call_details(state["calls"][f"r{round_record['number']}.plan.{actor}"])["output"]
             request["tool_result"] = self.read_source(plan["source_id"]) if plan["source_id"] is not None else None
             request["prior_action"] = plan
             request["contract"] = {"finding": "读完材料后，说明认识或行动如何变化，保留竞争解释",
@@ -305,7 +453,7 @@ class Project:
                 "summary": "下一轮私有摘要", "unresolved": "尚未核对的问题",
                 "claim_kind": "fact/inference/hypothesis/idea之一；引用原文不自动验证推断",
                 "revisit_when": "什么新材料、反例或关注点变化会使本发现需要重开，最多50字",
-                "change": "可为null；或{kind:join或reopen,target:已有方向ID,reason:材料或交流给出的变更/重开理由,influenced_by:[实际同伴帖子ID]}；reopen只针对paused方向，不必为了流程而调整"}
+                "change": "null；或{kind:join/reopen,target:已有方向ID,reason:变更理由,influenced_by:[实际同伴ID]}；或{kind:fork,target:null,title:新的暂定方向,reason:为何分叉,influenced_by:[实际同伴ID，没有则空]}。fork可依据本次材料或明确的推理设想，reopen只针对paused方向；不要求为了流程调整"}
             if request["tool_result"] is None:
                 request["contract"]["evidence"] = None
                 request["contract"]["claim_kind"] = "inference/hypothesis/idea之一；本次没有外部材料，禁止把主张标为fact"
@@ -313,8 +461,10 @@ class Project:
                                                if review_context else "null；本次未在plan选择复查，不能改写旧发现")
             request["contract"]["critique"] = ("null，或{target_post:本次peers或shared_memory中他人的发现ID,reason:具体质疑}；仅有索引时只能指出待查问题，不能声称读过全文；质疑不自动推翻主张"
                                                  if request["peer_critique_enabled"] else "null；本配置不提供同伴质疑通道")
-        request["instructions"] = "严格输出JSON对象，键与contract一致，每个文字字段最多100字。视角提示可自行拒绝或修订，不是固定研究分工。不得编造来源或同伴ID，不用多数同意代替证据。方向与分工由你根据证据判断，程序不要求必定改向。"
-        omitted = {"peers": 0, "shared_memory": 0, "private_notes": 0, "review_candidates": 0,
+            if not semantic_policy["direction_changes"]:
+                request["contract"]["change"] = "null；本次固定方向与成员，保留讨论和发现但不应用重组"
+        request["instructions"] = "严格输出JSON对象，键与contract一致，每个文字字段最多100字。视角提示可自行拒绝或修订，不是固定研究分工。不得编造来源或同伴ID，不用多数同意代替证据。方向与分工由你根据证据判断，程序不要求必定改向。source_assessments为署名的来源支持判断，不是新证据或事实认证；检查其范围、问题版本及分歧。"
+        omitted = {"peers": 0, "shared_memory": 0, "private_notes": 0, "review_candidates": 0, "cross_project_memory": 0,
                    "review_challenges": 0}
         request["context_omissions"] = omitted
         if review_context:
@@ -334,6 +484,9 @@ class Project:
         while size() > 22000 and request["private_memory"].get("recalled_notes"):
             request["private_memory"]["recalled_notes"].pop()
             omitted["private_notes"] += 1
+        while size() > 22000 and request["cross_project_memory"]:
+            request["cross_project_memory"].pop()
+            omitted["cross_project_memory"] += 1
         while size() > 22000 and request["review_candidates"]:
             request["review_candidates"].pop()
             omitted["review_candidates"] += 1
@@ -360,11 +513,11 @@ class Project:
         peer_ids = {p["id"] for p in request["peers"]} | set(request.get("previously_read_peer_ids", [])) | set(request.get("contribution_views", {}))
         if phase not in ("propose", "consent"):
             links = output.get("influenced_by")
-            if not isinstance(links, list) or any(link not in peer_ids for link in links):
+            if not isinstance(links, list) or any(not isinstance(link, str) or link not in peer_ids for link in links):
                 raise ValueError("Influence link was not in the actually provided peer context")
         if phase in ("plan", "consent"):
             acks = output.get("acknowledge")
-            if not isinstance(acks, list):
+            if not isinstance(acks, list) or any(not isinstance(ack, str) for ack in acks):
                 raise ValueError("Acknowledgement refers to an unseen proposal")
             pending_ids = {c["id"] for c in request["pending_changes"]}
             obsolete = [ack for ack in acks if ack not in pending_ids]
@@ -379,7 +532,7 @@ class Project:
         if phase == "plan":
             reviews.selection(output, request)
             if "source_id" not in output or (output["source_id"] is not None and
-                    output["source_id"] not in {source["id"] for source in request["sources"]}):
+                    (not isinstance(output["source_id"], str) or output["source_id"] not in {source["id"] for source in request["sources"]})):
                 raise ValueError("Source outside read allowlist")
         if phase == "reflect":
             reviews.validate(output, request)
@@ -405,22 +558,57 @@ class Project:
                                 location_method="unique_exact_quote", source_sha256=source["sha256"])
             change = output.get("change")
             if change is not None:
-                if (not isinstance(change, dict) or change.get("kind") not in ("join", "reopen")
-                        or change.get("target") not in {d["id"] for d in request["directions"]}
+                if not request.get("semantic_policy", policy.DEFAULT)["direction_changes"]:
+                    raise ValueError("Direction changes are disabled in this frozen configuration")
+                if (not isinstance(change, dict) or change.get("kind") not in ("join", "reopen", "fork")
                         or not isinstance(change.get("reason"), str) or not change["reason"].strip()
-                        or not isinstance(change.get("influenced_by"), list) or not change["influenced_by"]
-                        or any(link not in peer_ids for link in change["influenced_by"])):
+                        or not isinstance(change.get("influenced_by"), list)
+                        or any(not isinstance(link, str) or link not in peer_ids for link in change["influenced_by"])):
                     raise ValueError("Direction change has no valid target or peer basis")
-                target = next(d for d in request["directions"] if d["id"] == change["target"])
-                if change["kind"] == "reopen" and target["status"] != "paused":
-                    raise ValueError("Reopening requires a previously paused direction")
+                if change["kind"] == "fork":
+                    if not request.get("direction_forks_enabled", False):
+                        raise ValueError("Forks were not enabled in this archived request")
+                    if (change.get("target") is not None or not isinstance(change.get("title"), str)
+                            or not change["title"].strip()):
+                        raise ValueError("A fork needs a new title and cannot overwrite an existing direction")
+                else:
+                    target = next((d for d in request["directions"] if d["id"] == change.get("target")), None)
+                    if target is None:
+                        raise ValueError("Direction change target was not actually supplied")
+                    own = target.get("created_by") == request["actor"] or target["id"] == "direction:" + request["actor"]
+                    if not change["influenced_by"] and not (request.get("direction_forks_enabled", False) and change["kind"] == "reopen" and (own or source is not None)):
+                        raise ValueError("Joining a peer direction needs an actual peer basis")
+                    if change["kind"] == "reopen" and target["status"] != "paused":
+                        raise ValueError("Reopening requires a previously paused direction")
 
     def apply_changes(self, state):
         for proposal in state["changes"].values():
             if proposal["status"] != "pending" or not set(proposal["affected"]) <= set(proposal["acks"]):
                 continue
-            target = state["directions"][proposal["target"]]
             origin = state["directions"][proposal["origin"]]
+            if proposal["kind"] == "fork":
+                if origin["version"] != proposal["base_versions"][0] or proposal["target"] in state["directions"]:
+                    proposal["status"] = "stale"
+                    continue
+                before = json.loads(json.dumps([origin]))
+                actor = proposal["actor"]
+                origin["members"].remove(actor)
+                origin["version"] += 1
+                if not origin["members"]:
+                    origin["status"] = "paused"
+                target = {"id": proposal["target"], "title": proposal["title"], "members": [actor],
+                          "status": "active", "version": 1, "created_by": actor,
+                          "proposal_post": proposal["post_id"], "forked_from": origin["id"],
+                          "basis_kind": proposal["basis_kind"], "basis_source_id": proposal["basis_source_id"],
+                          "claim_truth_verified": False}
+                state["directions"][target["id"]] = target
+                state["agents"][actor]["direction"] = target["id"]
+                proposal["status"] = "applied"
+                state["direction_history"].append({"proposal_id": proposal["id"], "before": before,
+                    "after": json.loads(json.dumps([origin, target]))})
+                self.event(state, "direction_fork_applied", proposal_id=proposal["id"])
+                continue
+            target = state["directions"][proposal["target"]]
             if (origin["version"], target["version"]) != tuple(proposal["base_versions"]):
                 proposal["status"] = "stale"
                 continue
@@ -467,7 +655,7 @@ class Project:
             if phase == "propose" and state["agents"][actor]["direction"] is None:
                 direction_id = "direction:" + actor
                 state["directions"][direction_id] = {"id": direction_id, "title": output["direction"],
-                    "members": [actor], "version": 1, "status": "active", "proposal_post": post_id}
+                    "members": [actor], "version": 1, "status": "active", "proposal_post": post_id, "created_by": actor}
                 state["agents"][actor]["direction"] = direction_id
             if phase in ("plan", "consent"):
                 for proposal_id in output["acknowledge"]:
@@ -484,7 +672,19 @@ class Project:
             if phase == "reflect" and output.get("change"):
                 proposed = output["change"]
                 origin_id = state["agents"][actor]["direction"]
-                if proposed["target"] != origin_id:
+                if proposed["kind"] == "fork":
+                    observed = next(d for d in request["directions"] if d["id"] == origin_id)
+                    origin = state["directions"][origin_id]
+                    proposal_id = "change:" + call_id
+                    source_id = (output.get("evidence") or {}).get("source_id")
+                    state["changes"][proposal_id] = {**proposed, "id": proposal_id, "actor": actor,
+                        "origin": origin_id, "target": "direction:fork_" + hashlib.sha256(call_id.encode()).hexdigest()[:24], "post_id": post_id,
+                        "status": "pending" if origin["version"] == observed["version"] else "stale",
+                        "base_versions": [observed["version"]], "affected": sorted(observed["members"]),
+                        "acks": {actor: post_id}, "basis_source_id": source_id,
+                        "basis_kind": "material" if source_id else "peer" if proposed["influenced_by"] else "reasoning_only"}
+                    self.apply_changes(state)
+                elif proposed["target"] != origin_id:
                     origin, target = state["directions"][origin_id], state["directions"][proposed["target"]]
                     observed = {direction["id"]: direction for direction in request["directions"]}
                     observed_origin, observed_target = observed[origin_id], observed[proposed["target"]]
@@ -524,6 +724,10 @@ class Project:
                 return False
             if state["status"] != "active":
                 raise RuntimeError("Project is paused or cancelling")
+            trigger = round_record.get("schedule_trigger")
+            if trigger and (not state.get("schedule", {}).get("enabled") or
+                            state["schedule"]["generation"] != trigger["generation"]):
+                raise RuntimeError("Scheduled dispatch was disabled or superseded")
             number = sum(c["round"] == round_record["number"] for c in
                          [*state["calls"].values(), *state.get("retired_calls", {}).values()])
             if number >= state["max_invocations_per_round"]:
@@ -589,9 +793,27 @@ class Project:
                 failure=failure)
             raise
 
-    def advance(self, backend):
+    def advance(self, backend, *, trigger=None, evaluation_case=None):
+        observed, _ = self.file.read()
+        binding = observed.get("evaluation_binding")
+        if binding:
+            if evaluation_case != binding:
+                raise ValueError("Advance a frozen case through its evaluation campaign")
+            from .evaluation import assert_case_inputs, validate_frozen
+            campaign = JsonFile(self.client, binding["campaign_workspace"], "evaluation/campaign.json").read()[0]
+            if campaign["frozen"]["protocol_sha256"] != binding["protocol_sha256"]:
+                raise Conflict("Project binding differs from its frozen campaign")
+            protocol = validate_frozen(campaign["frozen"], require_runtime=True)
+            case = next((c for c in campaign["cases"] if c["id"] == binding["case_id"]), None)
+            if case is None:
+                raise ValueError("Frozen campaign no longer contains this case")
+            assert_case_inputs(observed, protocol, case)
         owner = uuid.uuid4().hex
         def own(state):
+            if state.get("evaluation_binding") != binding:
+                raise Conflict("Evaluation binding changed while claiming execution")
+            if binding:
+                assert_case_inputs(state, protocol, case)
             current = state.get("controller")
             if current and alive(current["process"]):
                 raise RuntimeError("Another live controller owns this project")
@@ -599,7 +821,7 @@ class Project:
             return True
         self.file.update("controller:" + owner, own)
         try:
-            return self._advance_owned(backend, owner)
+            return self._advance_owned(backend, owner, trigger=trigger)
         finally:
             def release(state):
                 if state.get("controller", {}).get("owner") == owner:
@@ -607,26 +829,47 @@ class Project:
                 return True
             self.file.update("release:" + owner, release)
 
-    def _advance_owned(self, backend, owner):
+    def _advance_owned(self, backend, owner, *, trigger=None):
         def start(state):
             if state["status"] != "active":
                 raise RuntimeError("Project is paused or blocked; inspect status first")
+            if trigger is not None:
+                schedule = state.get("schedule", {})
+                if (not schedule.get("enabled") or schedule["generation"] != trigger["generation"]
+                        or schedule.get("trigger", {}).get("id") != trigger["id"]):
+                    raise RuntimeError("The scheduled wakeup was disabled or replaced")
+                actual = len(state["rounds"]) + (1 if not state["rounds"] or state["rounds"][-1]["status"] in ("completed", "cancelled") else 0)
+                if actual != trigger["round_target"]:
+                    raise Conflict("The scheduled target round already changed; do not start another round")
             previous_backends = {c["backend"] for c in
                                  [*state["calls"].values(), *state.get("retired_calls", {}).values()]}
             if previous_backends and previous_backends != {backend.name}:
                 raise RuntimeError("Use a separate project for another backend; simulated results cannot fill a real-model case")
             if state["rounds"] and state["rounds"][-1]["status"] not in ("completed", "cancelled"):
+                if trigger is None and state["rounds"][-1].pop("schedule_trigger", None):
+                    self.event(state, "scheduled_round_taken_over_manually", round=state["rounds"][-1]["number"])
                 return state["rounds"][-1]
             if len(state["rounds"]) >= state["max_rounds"]:
                 raise RuntimeError("All configured rounds have completed")
             record = {"number": len(state["rounds"]) + 1, "question_revision": len(state["question_revisions"]),
                       "status": "active", "phase": "propose"}
+            if trigger:
+                record["schedule_trigger"] = {"id": trigger["id"], "generation": trigger["generation"]}
             state["rounds"].append(record)
             self.event(state, "round_started", round=record["number"], question_revision=record["question_revision"])
             return record
         round_record = self.file.update("round-start:" + owner, start)
         for phase in ("propose", "plan", "reflect", "consent"):
+            self.archive_history()
             state, _ = self.file.read()
+            # Reserve room for a complete bounded phase before any paid call.
+            # The upstream API accepts 1 MB JSON bodies. If the compact index
+            # itself is full, preserve it and require an explicit continuation.
+            if len(json.dumps({"content": json.dumps(state)}).encode()) > 450_000:
+                self.file.update("storage-boundary:" + owner, lambda s: s.update(
+                    status="blocked", last_errors=["storage_capacity"],
+                    continuation_required="Export this project and explicitly link relevant qualified memory into a new project"))
+                raise RuntimeError("Project audit index reached its bounded capacity; export and create an explicit linked continuation before more calls")
             if state["status"] != "active":
                 return
             actors = list(state["agents"])
@@ -636,7 +879,7 @@ class Project:
                 if not actors:
                     continue
             errors = []
-            with ThreadPoolExecutor(max_workers=2) as pool:
+            with ThreadPoolExecutor(max_workers=state.get("max_concurrency", 2)) as pool:
                 futures = [pool.submit(self.perform, actor, phase, round_record, backend, owner) for actor in actors]
                 for future in as_completed(futures):
                     try:
@@ -659,6 +902,7 @@ class Project:
                 raise RuntimeError("A participant failed; all settled peer results were retained. Inspect/reconcile before retry.")
             self.file.update(f"phase:{round_record['number']}:{phase}",
                              lambda s: s["rounds"][-1].update(phase=phase))
+        self.archive_history()
         self.file.update("round-complete:" + str(round_record["number"]),
                          lambda s: s["rounds"][-1].update(status="completed"))
 
@@ -754,6 +998,8 @@ class Project:
 
     def export(self, destination):
         state, version = self.file.read()
+        for group in ("calls", "retired_calls"):
+            state[group] = {slot: self.call_details(call) for slot, call in state.get(group, {}).items()}
         posts = [{**entry, "post": self.client.request("GET", f"/posts/{entry['id']}")} for entry in state["posts"]]
         attempts = [*state["calls"].values(), *state.get("retired_calls", {}).values()]
         kind = "not_run" if not attempts else (
@@ -764,6 +1010,23 @@ class Project:
                     "execution_observations": self.execution_status(),
                     "sources": [self.read_source(source_id) for source_id in state["sources"]],
                     "kind": kind}
+        snapshot["source_assessment_summary"] = assessments.summary(state)
+        sources = {source["id"]: source for source in snapshot["sources"]}
+        snapshot["source_audits"] = []
+        for item in posts:
+            if item["phase"] == "reflect":
+                content = json.loads(item["post"]["content"])
+                source = sources.get((content.get("evidence") or {}).get("source_id"))
+                snapshot["source_audits"].append(assessments.packet(state, item["id"], content, source))
+        snapshot["source_assessment_bases"] = {}
+        for entry in state.get("source_assessments", {}).values():
+            fingerprint = entry["basis_sha256"]
+            if fingerprint not in snapshot["source_assessment_bases"]:
+                archived = json.loads(self.client.request("GET",
+                    f"/workspaces/{self.file.workspace}/files/{entry['basis_path']}")["content"])
+                if archived.get("basis_sha256") != fingerprint or assessments.digest(archived["basis"]) != fingerprint:
+                    raise RuntimeError("Archived audit basis differs from its fingerprint")
+                snapshot["source_assessment_bases"][fingerprint] = archived
         atomic_local(destination / "export.json", snapshot)
         lines = [f"# {state['name']} 阶段简报", "", f"模式：{state['mode']}；状态：{state['status']}；轮数：{len(state['rounds'])}",
                  "", f"记录性质：{snapshot['kind']}；模拟运行不验证探索质量。", "", "## 问题版本", ""]
@@ -799,6 +1062,14 @@ class Project:
                           f"  - 取回的原笔记：{review['recalled_note_ids']}；实际材料：{(review.get('evidence') or {}).get('source_id', '无外部材料')}"])
         unanswered = sum(not c.get("author_responses") for k in state.get("knowledge", {}).values() for c in k.get("challenges", []))
         lines.append(f"尚无当前版本作者回应的质疑：{unanswered}。有回应也不等于异议已解决；修订后的主张仍待核查，过期复查不改变旧认识状态。")
+        counts = snapshot["source_assessment_summary"]
+        lines.extend(["", "## 来源支持核查", "",
+                      f"已核查发现：{counts['assessed_finding_count']}/{counts['finding_count']}；其中全部材料型发现：{counts['material_based_finding_count']}；核查记录：{counts['assessment_count']}。",
+                      "分母包含全部历史发现；同一发现可有重复核查和不同判断，不计算正确率。核查署名由提交者提供，未经身份认证。", ""])
+        for assessment in state.get("source_assessments", {}).values():
+            lines.extend([f"- {assessment['target_post']}；{assessment['reviewer']}：{assessment['verdict']}（问题 v{assessment['question_revision']}）",
+                          f"  - 范围：{assessment['scope']}；理由：{assessment['reason']}；记录：{assessment['id']}",
+                          f"  - 核查依据：{assessment['basis_sha256']}；判断不自动验证主张或消除异议。"])
         lines.extend(["", "## 运行与变更", "", f"已完成调用：{sum(c['status']=='completed' for c in state['calls'].values())}/{len(state['calls'])}",
                       f"已应用方向/成员变更：{len(state['direction_history'])}；待确认：{sum(c['status']=='pending' for c in state['changes'].values())}；过期未生效：{sum(c['status']=='stale' for c in state['changes'].values())}",
                       f"保留的历史失败尝试：{len(state.get('retired_calls',{}))}；重试仍计入调用限额与费用预留。",

@@ -110,6 +110,8 @@ bash scripts/cloud/setup_pi.sh
 
 ## 故障和人工检查
 
+需要逐条记录引文是否支持主张时，使用 `source-audit NAME POST_ID` 和 `assess-source`，见 [来源支持核查](source-support.md)。命令不调用模型；核查判断保留署名、范围和版本，并在下一轮本人复查候选中可见。
+
 pause 停止新派发，cancel 取消当前拥有的进程；status 显示实际状态。`reconcile NAME` 只核对已有结果和稳定发布，不追加模型调用。已确认终止或未发送的失败可用 `retry NAME ACTUAL_SLOT "纠正理由"` 明确授权新尝试，之后再次 advance；未知供应商结果会阻止盲重试。
 
 请重点检查：同伴内容是否确实改变行动；引用是否支持主张的全部范围；旧记忆在新问题下是否仍适用；争议是否被保留。引文匹配、文件存在、调用成功和同伴一致都不能替代这些判断。

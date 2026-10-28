@@ -5,6 +5,7 @@ import copy
 import json
 
 from .memory import terms
+from . import assessments
 
 DECISIONS = ("retain", "revise", "withdraw", "undecided")
 INACTIVE = ("superseded", "withdrawn")
@@ -24,11 +25,12 @@ def candidates(state, actor, question, revision, limit=6):
                 ("post_id", "actor", "preview", "question_revision", "status", "evidence", "unresolved", "revisit_when")
                 if key in finding}
         card.update(review_version=finding.get("review_version", 0),
+                    source_assessments=assessments.view(state, finding),
                     challenges=copy.deepcopy((unanswered + [c for c in reversed(challenges) if c not in unanswered])[:6]),
                     unanswered_challenge_count=len(unanswered),
                     applicability_check_required=finding["question_revision"] != revision,
                     qualification="An objection and an author's response are not independent truth verification")
-        score = (bool(unanswered), bool(challenges), finding["question_revision"] != revision,
+        score = (bool(unanswered), assessments.needs_attention(state, finding), bool(challenges), finding["question_revision"] != revision,
                  len(query & terms(finding.get("preview", "") + " " + finding.get("unresolved", ""))))
         entries.append((score, len(entries), card))
     return [card for _, _, card in sorted(entries, key=lambda item: (item[0], item[1]), reverse=True)[:limit]]

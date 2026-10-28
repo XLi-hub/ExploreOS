@@ -331,7 +331,8 @@ class SimulatedBackend:
                     "influenced_by": links, "change": None, "claim_kind": "hypothesis", "review": review,
                     "summary": "Keep the unverified hypothesis open", "unresolved": "External material would be needed to check it"}
         change = None
-        if self.scenario == "merge" and request["round"] == 1 and actor.endswith("0") and links:
+        if (self.scenario == "merge" and request["round"] == 1 and actor.endswith("0") and links
+                and request.get("semantic_policy", {}).get("direction_changes", True)):
             target = next(d["id"] for d in request["directions"] if actor not in d["members"])
             change = {"kind": "join", "target": target, "reason": "Fixture peer correction", "influenced_by": links}
         index = next(i for i, line in enumerate(source["lines"]) if line.strip())

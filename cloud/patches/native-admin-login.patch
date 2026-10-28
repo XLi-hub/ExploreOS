@@ -1,0 +1,11 @@
+--- a/src/routes/agents.js
++++ b/src/routes/agents.js
+@@ -82,7 +82,7 @@
+ router.get('/me', requireAuth, async (req, res, next) => {
+   try {
+     const agentName = req.headers['x-agent-name'];
+-    if (!agentName) {
++    if (!agentName || agentName === 'admin') {
+       // No X-Agent-Name → treat as the local admin (the bearer token is the
+       // admin token in local mode). Production's /me returns {agent: req.agent};
+       // we mirror that shape with a synthetic admin row. The bearer-token
