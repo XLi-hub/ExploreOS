@@ -22,8 +22,10 @@ def main():
     create.add_argument("--mode", choices=MODES, default="collaborative")
     create.add_argument("--scenario", choices=("split", "merge", "feedback"), default="split")
     create.add_argument("--question", help="Any open question; no metric or dataset required")
+    create.add_argument("--participants", type=int, default=3)
+    create.add_argument("--concurrency", type=int, default=2)
     create.add_argument("--source", action="append", default=[], help="Explicitly allowed UTF-8 material path; repeat for more materials")
-    for name in ("advance", "status", "pause", "resume", "cancel", "reconcile", "export", "steer", "add-source", "memory", "reviews", "executions", "extend", "challenge", "retry", "source-audit", "assess-source"):
+    for name in ("advance", "status", "pause", "resume", "cancel", "reconcile", "export", "steer", "add-source", "memory", "reviews", "executions", "extend", "challenge", "retry", "source-audit", "assess-source", "link-memory"):
         command = sub.add_parser(name)
         command.add_argument("name")
         if name == "advance":
@@ -52,12 +54,18 @@ def main():
             command.add_argument("--scope", required=True, help="What the cited material does and does not support")
             command.add_argument("--reviewer", default="user", help="Self-reported attribution, not authenticated identity")
             command.add_argument("--assessment-id", help="Stable ID to safely repeat a submission after an unknown response")
+        if name == "link-memory":
+            command.add_argument("origin_name")
+            command.add_argument("post_id")
+            command.add_argument("--conditions", required=True)
+            command.add_argument("--reason", required=True)
     args = parser.parse_args()
     client = Client()
     if args.command == "create":
         sources = [(f"source{i}", Path(path).name, path, 1, 80) for i, path in enumerate(args.source)]
         project = Project.create(client, args.name, mode=args.mode, scenario=args.scenario,
-                                 question=args.question, sources=sources or None)
+                                 question=args.question, sources=sources or None, participants=args.participants,
+                                 max_concurrency=args.concurrency)
     else:
         directory = (ROOT / ".research" / args.name).resolve()
         if directory.parent != (ROOT / ".research").resolve():
@@ -96,6 +104,13 @@ def main():
         elif args.command == "assess-source":
             print("Recorded source assessment:", project.assess_source(args.post_id, args.basis_sha256,
                 args.verdict, args.reason, args.reviewer, args.scope, args.assessment_id))
+        elif args.command == "link-memory":
+            from . import cross_memory
+            origin_directory = (ROOT / ".research" / args.origin_name).resolve()
+            if origin_directory.parent != (ROOT / ".research").resolve():
+                raise ValueError("Choose a local project name")
+            origin = Project(client, origin_directory)
+            print("Linked qualified memory:", cross_memory.link(project, origin, args.post_id, args.conditions, args.reason))
         elif args.command == "memory":
             from .memory import Memory
             state, _ = project.file.read()

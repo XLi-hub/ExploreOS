@@ -11,6 +11,7 @@ on:
       - 'tests/**'
       - 'examples/open-exploration/**'
       - 'examples/feedback/**'
+      - 'examples/evaluation/**'
       - '.github/workflows/cloud-bootstrap.yml'
   pull_request:
     paths:
@@ -22,6 +23,7 @@ on:
       - 'tests/**'
       - 'examples/open-exploration/**'
       - 'examples/feedback/**'
+      - 'examples/evaluation/**'
       - '.github/workflows/cloud-bootstrap.yml'
 permissions:
   contents: read

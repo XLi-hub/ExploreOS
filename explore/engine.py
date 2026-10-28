@@ -12,7 +12,7 @@ import uuid
 from scripts.cloud.runtime import ROOT
 from .bootstrap import launch
 from .memory import Memory, select_shared_memory
-from . import assessments, reviews
+from . import assessments, cross_memory, policy, reviews
 from .subagents import read_receipt, terminal as plugin_terminal
 from .models import REAL_BACKENDS, parse_json_output
 from .store import Conflict, JsonFile, atomic_local
@@ -63,10 +63,20 @@ class Project:
         self.file = JsonFile(client, self.metadata["workspace_id"], "exploration/state.json")
 
     @classmethod
-    def create(cls, client, name, *, mode="collaborative", scenario="split", max_rounds=2, question=None, sources=None, question_author="user"):
+    def create(cls, client, name, *, mode="collaborative", scenario="split", max_rounds=2, question=None, sources=None, question_author="user", semantic_policy=None, max_invocations_per_round=None, participants=3, max_concurrency=2):
         if mode not in MODES:
             raise ValueError("Unknown evaluation mode")
-        directory, metadata = launch(client, name, question)
+        semantic_policy = policy.normalize(semantic_policy)
+        if type(participants) is not int or not 1 <= participants <= 8 or type(max_concurrency) is not int or not 1 <= max_concurrency <= 8:
+            raise ValueError("Configure 1–8 participants and 1–8 concurrent calls")
+        max_invocations_per_round = max_invocations_per_round if max_invocations_per_round is not None else max(12, participants * 4)
+        if type(max_rounds) is not int or not 1 <= max_rounds <= 20:
+            raise ValueError("Configure 1–20 finite rounds")
+        if type(max_invocations_per_round) is not int or not 3 <= max_invocations_per_round <= 40:
+            raise ValueError("Round invocation ceiling must be 3–40")
+        if mode not in ("single", "multiple_perspectives") and max_invocations_per_round < participants * 3:
+            raise ValueError("Invocation ceiling must allow each participant's three baseline phases")
+        directory, metadata = launch(client, name, question, participants=participants)
         project = cls(client, directory)
         actors = metadata["agents"][:1] if mode in ("single", "multiple_perspectives") else metadata["agents"]
         snapshots = {}
@@ -78,9 +88,11 @@ class Project:
                            {"content": json.dumps(source, ensure_ascii=False)}, version=0)
             snapshots[source["id"]] = {key: value for key, value in source.items() if key != "lines"}
         project.file.create({"kind": "open_exploration_v1", "name": name, "mode": mode, "scenario": scenario,
-            "status": "active", "max_rounds": max_rounds, "max_invocations_per_round": 12,
+            "status": "active", "max_rounds": max_rounds, "max_invocations_per_round": max_invocations_per_round,
+            "semantic_policy": semantic_policy,
+            "max_concurrency": max_concurrency,
             "question_revisions": [{"number": 1, "text": question or "如何让本项目从多智能体演示走向可持续、可核对的开放探索？", "author": question_author if question else "user_fixture"}],
-            "agents": {actor: {"direction": None, "cursor": 0, "perspective": PERSPECTIVES[i]} for i, actor in enumerate(actors)},
+            "agents": {actor: {"direction": None, "cursor": 0, "perspective": PERSPECTIVES[i % len(PERSPECTIVES)]} for i, actor in enumerate(actors)},
             "directions": {}, "changes": {}, "direction_history": [], "sources": snapshots, "rounds": [],
             "calls": {}, "posts": [], "knowledge": {}, "reviews": [], "events": []})
         return project
@@ -287,6 +299,7 @@ class Project:
         return self.file.update("source-assessment:" + assessment_id + ":" + assessments.digest(supplied), change)
 
     def request_for(self, state, actor, phase, round_record):
+        semantic_policy = policy.normalize(state.get("semantic_policy"))
         review_context = None
         if phase == "reflect":
             planned = state["calls"][f"r{round_record['number']}.plan.{actor}"]
@@ -309,7 +322,8 @@ class Project:
                     source_ids=[result["evidence"]["source_id"]] if result.get("evidence") else [],
                     unresolved=result.get("unresolved", ""), peer_posts=result.get("influenced_by", []), review=result.get("review"))
         memory = memory_store.recall(state["question_revisions"][round_record["question_revision"] - 1]["text"],
-                                    preferred_ids=review_context["memory_note_ids"] if review_context else ())
+                                    preferred_ids=review_context["memory_note_ids"] if review_context else (),
+                                    include_execution_failures=semantic_policy["execution_failure_memory"])
         prior_findings = {call["id"]: state.get("knowledge", {}).get(call.get("post_id")) for call in state["calls"].values()}
         for note in memory.get("recalled_notes", []):
             finding = prior_findings.get(note["id"])
@@ -340,7 +354,9 @@ class Project:
         request["shared_memory"] = select_shared_memory(state, actor, phase, request["question"], request["question_revision"])
         request["review_candidates"] = reviews.candidates(state, actor, request["question"], request["question_revision"]) if phase == "plan" else []
         request["review_context"] = review_context
-        request["peer_critique_enabled"] = state["mode"] == "collaborative" and phase == "reflect"
+        request["peer_critique_enabled"] = state["mode"] == "collaborative" and phase == "reflect" and semantic_policy["peer_critique"]
+        request["semantic_policy"] = semantic_policy
+        request["cross_project_memory"] = cross_memory.recall(self.client, state) if phase != "propose" else []
         if phase == "propose":
             request["contract"] = {"direction": "一个暂定探索方向，避免声称已验证", "reason": "方向理由", "summary": "私有工作摘要"}
         elif phase == "plan":
@@ -369,8 +385,10 @@ class Project:
                                                if review_context else "null；本次未在plan选择复查，不能改写旧发现")
             request["contract"]["critique"] = ("null，或{target_post:本次peers或shared_memory中他人的发现ID,reason:具体质疑}；仅有索引时只能指出待查问题，不能声称读过全文；质疑不自动推翻主张"
                                                  if request["peer_critique_enabled"] else "null；本配置不提供同伴质疑通道")
+            if not semantic_policy["direction_changes"]:
+                request["contract"]["change"] = "null；本次固定方向与成员，保留讨论和发现但不应用重组"
         request["instructions"] = "严格输出JSON对象，键与contract一致，每个文字字段最多100字。视角提示可自行拒绝或修订，不是固定研究分工。不得编造来源或同伴ID，不用多数同意代替证据。方向与分工由你根据证据判断，程序不要求必定改向。source_assessments为署名的来源支持判断，不是新证据或事实认证；检查其范围、问题版本及分歧。"
-        omitted = {"peers": 0, "shared_memory": 0, "private_notes": 0, "review_candidates": 0,
+        omitted = {"peers": 0, "shared_memory": 0, "private_notes": 0, "review_candidates": 0, "cross_project_memory": 0,
                    "review_challenges": 0}
         request["context_omissions"] = omitted
         if review_context:
@@ -390,6 +408,9 @@ class Project:
         while size() > 22000 and request["private_memory"].get("recalled_notes"):
             request["private_memory"]["recalled_notes"].pop()
             omitted["private_notes"] += 1
+        while size() > 22000 and request["cross_project_memory"]:
+            request["cross_project_memory"].pop()
+            omitted["cross_project_memory"] += 1
         while size() > 22000 and request["review_candidates"]:
             request["review_candidates"].pop()
             omitted["review_candidates"] += 1
@@ -461,6 +482,8 @@ class Project:
                                 location_method="unique_exact_quote", source_sha256=source["sha256"])
             change = output.get("change")
             if change is not None:
+                if not request.get("semantic_policy", policy.DEFAULT)["direction_changes"]:
+                    raise ValueError("Direction changes are disabled in this frozen configuration")
                 if (not isinstance(change, dict) or change.get("kind") not in ("join", "reopen")
                         or change.get("target") not in {d["id"] for d in request["directions"]}
                         or not isinstance(change.get("reason"), str) or not change["reason"].strip()
@@ -580,6 +603,10 @@ class Project:
                 return False
             if state["status"] != "active":
                 raise RuntimeError("Project is paused or cancelling")
+            trigger = round_record.get("schedule_trigger")
+            if trigger and (not state.get("schedule", {}).get("enabled") or
+                            state["schedule"]["generation"] != trigger["generation"]):
+                raise RuntimeError("Scheduled dispatch was disabled or superseded")
             number = sum(c["round"] == round_record["number"] for c in
                          [*state["calls"].values(), *state.get("retired_calls", {}).values()])
             if number >= state["max_invocations_per_round"]:
@@ -645,7 +672,7 @@ class Project:
                 failure=failure)
             raise
 
-    def advance(self, backend):
+    def advance(self, backend, *, trigger=None):
         owner = uuid.uuid4().hex
         def own(state):
             current = state.get("controller")
@@ -655,7 +682,7 @@ class Project:
             return True
         self.file.update("controller:" + owner, own)
         try:
-            return self._advance_owned(backend, owner)
+            return self._advance_owned(backend, owner, trigger=trigger)
         finally:
             def release(state):
                 if state.get("controller", {}).get("owner") == owner:
@@ -663,20 +690,32 @@ class Project:
                 return True
             self.file.update("release:" + owner, release)
 
-    def _advance_owned(self, backend, owner):
+    def _advance_owned(self, backend, owner, *, trigger=None):
         def start(state):
             if state["status"] != "active":
                 raise RuntimeError("Project is paused or blocked; inspect status first")
+            if trigger is not None:
+                schedule = state.get("schedule", {})
+                if (not schedule.get("enabled") or schedule["generation"] != trigger["generation"]
+                        or schedule.get("trigger", {}).get("id") != trigger["id"]):
+                    raise RuntimeError("The scheduled wakeup was disabled or replaced")
+                actual = len(state["rounds"]) + (1 if not state["rounds"] or state["rounds"][-1]["status"] in ("completed", "cancelled") else 0)
+                if actual != trigger["round_target"]:
+                    raise Conflict("The scheduled target round already changed; do not start another round")
             previous_backends = {c["backend"] for c in
                                  [*state["calls"].values(), *state.get("retired_calls", {}).values()]}
             if previous_backends and previous_backends != {backend.name}:
                 raise RuntimeError("Use a separate project for another backend; simulated results cannot fill a real-model case")
             if state["rounds"] and state["rounds"][-1]["status"] not in ("completed", "cancelled"):
+                if trigger is None and state["rounds"][-1].pop("schedule_trigger", None):
+                    self.event(state, "scheduled_round_taken_over_manually", round=state["rounds"][-1]["number"])
                 return state["rounds"][-1]
             if len(state["rounds"]) >= state["max_rounds"]:
                 raise RuntimeError("All configured rounds have completed")
             record = {"number": len(state["rounds"]) + 1, "question_revision": len(state["question_revisions"]),
                       "status": "active", "phase": "propose"}
+            if trigger:
+                record["schedule_trigger"] = {"id": trigger["id"], "generation": trigger["generation"]}
             state["rounds"].append(record)
             self.event(state, "round_started", round=record["number"], question_revision=record["question_revision"])
             return record
@@ -692,7 +731,7 @@ class Project:
                 if not actors:
                     continue
             errors = []
-            with ThreadPoolExecutor(max_workers=2) as pool:
+            with ThreadPoolExecutor(max_workers=state.get("max_concurrency", 2)) as pool:
                 futures = [pool.submit(self.perform, actor, phase, round_record, backend, owner) for actor in actors]
                 for future in as_completed(futures):
                     try:

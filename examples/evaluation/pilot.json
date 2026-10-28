@@ -1,0 +1,13 @@
+{
+  "version": "pilot-1",
+  "tasks": [
+    {"id":"changing_questions","kind":"open","question":"个人知识系统怎样支持经常改变的问题，同时控制维护负担？","second_round_focus":"现在重点支持临时公开讨论，并保留原始隐私边界。","sources":[{"path":"materials/changing_questions.md","title":"合成情景：问题变化与维护成本"}],"known_disputes":["检索速度与长期可恢复性","额外维护的价值"],"rubric":["保留竞争方案","区分情景观察和因果结论","用户改向后检查旧方案"]},
+    {"id":"agent_reliability","kind":"open","question":"为什么代理的短期演示与长期使用之间会出现差距？","second_round_focus":"现在只看个人每周接续的使用方式，比较最低成本的改进。","sources":[{"path":"materials/agent_reliability.md","title":"合成情景：代理可靠性"}],"known_disputes":["评测偏差还是执行缺陷","检查成本与自动化价值"],"rubric":["保留多个解释","提出可区分解释的观察","不把工具成功当质量证明"]},
+    {"id":"useful_disagreement","kind":"open","question":"怎样组织一个能保留有用分歧的创意讨论？","second_round_focus":"讨论必须三十分钟结束，并支持新成员下周接续。","sources":[{"path":"materials/disagreement.md","title":"合成情景：讨论与分歧"}],"known_disputes":["匿名记录的成本","固定反对角色是否制造无用异议"],"rubric":["区分异议数量和价值","处理时间限制","保留可接续依据"]},
+    {"id":"product_priority","kind":"open","question":"探索工具只有一周开发时间时，应怎样选择下一步能力？","second_round_focus":"用户只需要每周一次接续，不需要常驻后台；重新检查原优先级。","sources":[{"path":"materials/priorities.md","title":"合成情景：产品取舍"}],"known_disputes":["资料少还是恢复不可靠","界面可读性与功能数量"],"rubric":["不虚构需求频率","给出可逆试验","根据新关注点调整范围"]},
+    {"id":"qualified_analogy","kind":"open","question":"故障定位的方法能怎样帮助开放问题的知识积累？","second_round_focus":"提出一个轻量原型，并指出不能从故障定位迁移的部分。","sources":[{"path":"materials/analogy.md","title":"合成情景：可追溯类比"}],"known_disputes":["可复现与可判断的差异","可追溯是否被误认为已验证"],"rubric":["明确类比边界","提出可检查原型","保留不能迁移的条件"]},
+    {"id":"atomic_claim","kind":"checkable","question":"这个并发认领为什么会重复启动动作，应该怎样修正？","second_round_focus":"再检查租约过期时可以和不可以推断什么。","sources":[{"path":"materials/cas.md","title":"固定情景：认领竞态"}],"known_disputes":["应用层比较与数据库原子条件","租约过期与外部终止"],"rubric":["解释具体竞态窗口","说明受影响行数的意义","保留未知执行"],"expected_checks":["更新同时匹配预期版本和可认领状态","失败认领不启动动作","租约过期不证明外部停止"]},
+    {"id":"citation_scope","kind":"checkable","question":"给定引文是否支持多代理对所有开放问题稳定提质降本的主张？","second_round_focus":"保留材料能支持的部分，并设计需要补充的最小比较。","sources":[{"path":"materials/citation.md","title":"固定情景：引文支持范围"}],"known_disputes":["观察和推广","证据不足与主张为假"],"rubric":["检查范围、稳定性和成本","不否定已有有限观察","说明对照需求"],"expected_checks":["不能从一次观察推广到所有任务","没有成本数据不能声称降本","证据不足不等于证明无价值"]},
+    {"id":"unknown_request","kind":"checkable","question":"重启后怎样处理没有终态回执的已发送请求？","second_round_focus":"用户取消了本地进程，重新检查费用和重试边界。","sources":[{"path":"materials/unknown_request.md","title":"固定情景：未知请求"}],"known_disputes":["本地没有结果与供应商未执行","取消和费用终止"],"rubric":["保留预留","优先核对而非重发","说明何时可以新尝试"],"expected_checks":["unknown不自动释放额度","不盲目重试已发送请求","本地取消不证明远端停止"]}
+  ]
+}

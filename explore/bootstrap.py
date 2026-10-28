@@ -1,5 +1,6 @@
 """Materialize a narrowly patched upstream launcher; never edit its pinned checkout."""
 import hashlib
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,13 @@ ADAPTED = STATE / "adapted/AutoScientists"
 
 
 def prepare():
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (STATE / "prepare-adapter.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _prepare_owned()
+
+
+def _prepare_owned():
     source = STATE / "upstream/AutoScientists"
     manifest = json.loads((ROOT / "cloud/patches/autoscientists-open-task.json").read_text())
     pinned = json.loads((ROOT / "cloud/versions.json").read_text())["upstream"]["commit"]
@@ -41,7 +49,17 @@ def prepare():
     return ADAPTED
 
 
-def launch(client, name, question=None):
+def launch(client, name, question=None, participants=3):
+    if not name or len(name) > 24 or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789_" for c in name):
+        raise ValueError("Project name must be 1–24 lowercase letters, digits or underscores")
+    locks = STATE / "bootstrap-locks"
+    locks.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (locks / (name + ".lock")).open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _launch_owned(client, name, question, participants)
+
+
+def _launch_owned(client, name, question=None, participants=3):
     if not name or len(name) > 24 or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789_" for c in name):
         raise ValueError("Project name must be 1–24 lowercase letters, digits or underscores")
     destination = ROOT / ".research" / name
@@ -49,13 +67,16 @@ def launch(client, name, question=None):
         raise RuntimeError("Project directory already exists; use status/continue instead")
     launcher = prepare()
     task = ROOT / "examples/open-exploration"
-    if question is not None:
+    if type(participants) is not int or not 1 <= participants <= 8:
+        raise ValueError("Choose 1–8 exploration participants")
+    if question is not None or participants != 3:
+        question = question or "如何让本项目从多智能体演示走向可持续、可核对的开放探索？"
         if not isinstance(question, str) or not question.strip():
             raise ValueError("An open question must contain text")
         task = STATE / "open-tasks" / name
         task.mkdir(parents=True, exist_ok=True, mode=0o700)
         (task / "TASK.md").write_text("---\ntask_type: open_exploration\nname: " + name +
-            "\nparticipants: 3\n---\n\n" + question + "\n\nPreserve competing explanations and unresolved questions. Numeric goals, datasets, experiments and papers are optional.\n")
+            f"\nparticipants: {participants}\n---\n\n" + question + "\n\nPreserve competing explanations and unresolved questions. Numeric goals, datasets, experiments and papers are optional.\n")
         shutil.copy2(ROOT / "examples/open-exploration/LAUNCH.md", task / "LAUNCH.md")
     environment = os.environ.copy()
     # The release widens workshop names but still stores denormalized slugs in
@@ -75,8 +96,8 @@ def launch(client, name, question=None):
             "stderr": result.stderr.replace(client.token, "<redacted>")})
         raise RuntimeError("Upstream materialization failed; preserve the partial project for inspection")
     metadata = json.loads((destination / "run_metadata.json").read_text())
-    if metadata["task_type"] != "open_exploration" or len(metadata["agents"]) != 3:
-        raise RuntimeError("Upstream materialization did not produce three exploration identities")
+    if metadata["task_type"] != "open_exploration" or len(metadata["agents"]) != participants:
+        raise RuntimeError("Upstream materialization did not produce the requested exploration identities")
     if (destination / "champion").exists() or (destination / "repo").exists():
         raise RuntimeError("Open task unexpectedly materialized a scientific training repository")
     atomic_local(destination / "bootstrap-check.json", {"upstream_commit": "c71a92343b9a488ed10134be805845b9473ad18f",
