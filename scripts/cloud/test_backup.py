@@ -73,6 +73,20 @@ class BackupTests(unittest.TestCase):
             backup.create(self.source, self.archive)
         self.assertEqual(self.archive.read_bytes(), before)
 
+    def test_uninitialized_database_and_nonfile_token_cannot_publish_backup(self):
+        version = self.source / ".runtime/service/db/PG_VERSION"
+        version.unlink()
+        with self.assertRaises(ValueError):
+            backup.create(self.source, self.archive)
+        self.assertFalse(self.archive.exists())
+        version.write_text("17")
+        token = self.source / ".runtime/service/home/token"
+        token.unlink()
+        token.mkdir()
+        with self.assertRaises(ValueError):
+            backup.create(self.source, self.archive)
+        self.assertFalse(self.archive.exists())
+
     def test_source_symlinks_and_backups_inside_source_trees_are_refused(self):
         link = self.source / ".research/p/link"
         link.symlink_to(self.source / ".runtime/secrets/deepseek-api-key")

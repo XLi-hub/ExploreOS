@@ -90,10 +90,16 @@ def no_controllers(root):
 
 
 def source_paths(root):
+    for required in (".runtime/service/db/PG_VERSION", ".runtime/service/home/token"):
+        no_links(root, required)
+        if not (root / required).is_file():
+            raise ValueError("The source must contain an initialized PGlite database and regular service-token file")
     result = []
     for relative in (*TREES, *EXTRAS):
         path = root / relative
         no_links(root, relative)
+        if path.exists() and ((relative in TREES and not path.is_dir()) or (relative in EXTRAS and not path.is_file())):
+            raise ValueError("Snapshot data roots must be directories and reference/token entries must be regular files")
         if not path.exists():
             if relative in (".runtime/service/db", ".runtime/service/home/token"):
                 raise ValueError("The source has no existing ClawInstitute database/token")
@@ -226,8 +232,8 @@ def scan(path, destination=None, expected=None):
                 item["sha256"] = result.hexdigest()
             records.append(item)
     if (not manifest or manifest.get("kind") != "exploreos_cold_backup_v1" or manifest.get("records") != records
-            or not any(r["path"].startswith(".runtime/service/db/") for r in records)
-            or not any(r["path"] == ".runtime/service/home/token" for r in records)):
+            or not any(r["path"] == ".runtime/service/db/PG_VERSION" and r["kind"] == "file" for r in records)
+            or not any(r["path"] == ".runtime/service/home/token" and r["kind"] == "file" for r in records)):
         raise ValueError("Backup manifest or payload checksum differs")
     if expected is not None and manifest != expected:
         raise ValueError("Archive changed between validation and restore")
