@@ -77,6 +77,8 @@ jobs:
           .venv/bin/python scripts/cloud/runtime.py start
           .venv/bin/python scripts/cloud/smoke.py verify
           .venv/bin/python scripts/cloud/m0.py verify
+      - name: Verify private cold backup and isolated database restore
+        run: .venv/bin/python scripts/cloud/verify_backup.py
       - name: Stop owned service
         if: always()
         run: |

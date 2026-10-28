@@ -59,6 +59,7 @@ ExploreOS 关注问题如何越探越清楚、失败如何被后来者利用、�
 | [来源支持核查](docs/source-support.md) | 检查原文支持范围，记录署名判断、分歧与后续取回 |
 | [固定对照评测](docs/evaluation-pilot.md) | 八任务冻结包、四配置/三消融、重复运行、匿名评阅与报告 |
 | [探索工作台](docs/workbench.md) | 浏览器中的问题、方向、证据、认识变化和运行控制 |
+| [备份与恢复](docs/backup-restore.md) | 私有冷备、空实例恢复、预算保留与隔离验证 |
 | [有限持续运行](docs/daily-use.md) | 人数/并发、跨课题引用、唤醒、停用和恢复 |
 | [路线图工程验证](docs/roadmap-validation.md) | 已实现、已验证和仍待真实验收的边界 |
 | [插件前台委派](docs/subagent-integration.md) | 已接入的 subagent 路径、运行所有权、回执与恢复边界 |
