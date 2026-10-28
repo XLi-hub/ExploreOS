@@ -243,6 +243,62 @@ class Project:
             raise RuntimeError("Material changed after its project snapshot")
         return source
 
+    def call_details(self, call):
+        archive = call.get("archive")
+        if archive is None:
+            return call
+        record = json.loads(self.client.request("GET",
+            f"/workspaces/{self.file.workspace}/files/{archive['path']}")["content"])
+        if assessments.digest(record) != archive["sha256"] or record["call"]["id"] != call["id"]:
+            raise RuntimeError("Archived invocation differs from its immutable reference")
+        return {**record["call"], **call}
+
+    def archive_history(self, *, threshold=450_000):
+        """Move completed payloads to immutable upstream files before 1 MB writes.
+
+        Live/unknown attempts stay inline. Metadata, execution ownership and the
+        single content authority are unchanged; this is not another database.
+        """
+        state, _ = self.file.read()
+        if len(json.dumps({"content": json.dumps(state)}).encode()) <= threshold:
+            return 0
+        archived = {}
+        for group in ("calls", "retired_calls"):
+            for slot, call in state.get(group, {}).items():
+                if call.get("archive") or (group == "calls" and call["status"] != "completed"):
+                    continue
+                record = {"kind": "archived_invocation_v1", "call": call}
+                fingerprint = assessments.digest(record)
+                path = "execution/archive/" + hashlib.sha256(call["id"].encode()).hexdigest() + ".json"
+                endpoint = f"/workspaces/{self.file.workspace}/files/{path}"
+                try:
+                    self.client.request("PUT", endpoint, {"content": json.dumps(record, ensure_ascii=False)}, version=0)
+                except Conflict:
+                    if assessments.digest(json.loads(self.client.request("GET", endpoint)["content"])) != fingerprint:
+                        raise Conflict("Existing invocation archive differs from its fingerprint")
+                archived[(group, slot)] = (fingerprint, path, call)
+        if not archived:
+            return 0
+        def compact(current):
+            count = 0
+            for (group, slot), (fingerprint, path, observed) in archived.items():
+                actual = current.get(group, {}).get(slot)
+                if actual != observed:
+                    continue
+                actual["archive"] = {"path": path, "sha256": fingerprint}
+                for field in ("request", "output", "publication_payload"):
+                    actual.pop(field, None)
+                # Preserve all proven peer-read IDs before retiring full inputs.
+                actor = current["agents"].get(actual["actor"])
+                if actor is not None:
+                    provided = observed.get("request", {})
+                    actor["read_posts"] = sorted(set(actor.get("read_posts", [])) |
+                        {p["id"] for p in provided.get("peers", [])} | set(provided.get("contribution_views", {})))
+                count += 1
+            self.event(current, "invocation_payloads_archived", count=count)
+            return count
+        return self.file.update("archive-invocations:" + uuid.uuid4().hex, compact)
+
     def audit_source(self, post_id):
         state, _ = self.file.read()
         if not any(p["id"] == post_id and p["phase"] == "reflect" for p in state["posts"]):
@@ -302,7 +358,7 @@ class Project:
         semantic_policy = policy.normalize(state.get("semantic_policy"))
         review_context = None
         if phase == "reflect":
-            planned = state["calls"][f"r{round_record['number']}.plan.{actor}"]
+            planned = self.call_details(state["calls"][f"r{round_record['number']}.plan.{actor}"])
             chosen = reviews.selection(planned["output"], planned["request"])
             if chosen is not None:
                 review_context = reviews.context(self.client, state, chosen)
@@ -313,11 +369,14 @@ class Project:
                     post = self.client.request("GET", f"/posts/{entry['id']}")
                     peers.append({"id": post["id"], "actor": entry["actor"], "content": json.loads(post["content"])})
         memory_store = Memory(self.directory / "agents" / actor / "memory")
+        remembered = {note["id"] for note in memory_store.index()["notes"]}
         # Recover indexed private notes from immutable completed attempt outputs,
         # including projects created before the indexed-memory implementation.
         for call in state["calls"].values():
-            result = call.get("output", {})
-            if call["actor"] == actor and call["status"] == "completed" and result.get("summary"):
+            if call["actor"] != actor or call["status"] != "completed" or call["id"] in remembered:
+                continue
+            result = self.call_details(call).get("output", {})
+            if result.get("summary"):
                 memory_store.remember(call["id"], summary=result["summary"], question_revision=call["question_revision"],
                     source_ids=[result["evidence"]["source_id"]] if result.get("evidence") else [],
                     unresolved=result.get("unresolved", ""), peer_posts=result.get("influenced_by", []), review=result.get("review"))
@@ -368,7 +427,7 @@ class Project:
             request["contract"] = {"acknowledge": ["你明确同意的待处理变更ID；不同意或依据不足时留空"],
                                    "reason": "确认或保留意见的依据，不要为了完成流程而同意"}
         else:
-            plan = state["calls"][f"r{round_record['number']}.plan.{actor}"]["output"]
+            plan = self.call_details(state["calls"][f"r{round_record['number']}.plan.{actor}"])["output"]
             request["tool_result"] = self.read_source(plan["source_id"]) if plan["source_id"] is not None else None
             request["prior_action"] = plan
             request["contract"] = {"finding": "读完材料后，说明认识或行动如何变化，保留竞争解释",
@@ -721,7 +780,16 @@ class Project:
             return record
         round_record = self.file.update("round-start:" + owner, start)
         for phase in ("propose", "plan", "reflect", "consent"):
+            self.archive_history()
             state, _ = self.file.read()
+            # Reserve room for a complete bounded phase before any paid call.
+            # The upstream API accepts 1 MB JSON bodies. If the compact index
+            # itself is full, preserve it and require an explicit continuation.
+            if len(json.dumps({"content": json.dumps(state)}).encode()) > 450_000:
+                self.file.update("storage-boundary:" + owner, lambda s: s.update(
+                    status="blocked", last_errors=["storage_capacity"],
+                    continuation_required="Export this project and explicitly link relevant qualified memory into a new project"))
+                raise RuntimeError("Project audit index reached its bounded capacity; export and create an explicit linked continuation before more calls")
             if state["status"] != "active":
                 return
             actors = list(state["agents"])
@@ -754,6 +822,7 @@ class Project:
                 raise RuntimeError("A participant failed; all settled peer results were retained. Inspect/reconcile before retry.")
             self.file.update(f"phase:{round_record['number']}:{phase}",
                              lambda s: s["rounds"][-1].update(phase=phase))
+        self.archive_history()
         self.file.update("round-complete:" + str(round_record["number"]),
                          lambda s: s["rounds"][-1].update(status="completed"))
 
@@ -849,6 +918,8 @@ class Project:
 
     def export(self, destination):
         state, version = self.file.read()
+        for group in ("calls", "retired_calls"):
+            state[group] = {slot: self.call_details(call) for slot, call in state.get(group, {}).items()}
         posts = [{**entry, "post": self.client.request("GET", f"/posts/{entry['id']}")} for entry in state["posts"]]
         attempts = [*state["calls"].values(), *state.get("retired_calls", {}).values()]
         kind = "not_run" if not attempts else (

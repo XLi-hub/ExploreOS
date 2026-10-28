@@ -128,7 +128,7 @@ class Handler(BaseHTTPRequestHandler):
             elif view == "state":
                 state, version = project.file.read()
                 result = {key: state.get(key) for key in ("name", "status", "mode", "question_revisions", "directions",
-                    "changes", "direction_history", "knowledge", "reviews", "source_assessments", "rounds", "schedule", "schedule_notifications", "cross_project_memory")}
+                    "changes", "direction_history", "knowledge", "reviews", "source_assessments", "rounds", "schedule", "schedule_notifications", "cross_project_memory", "last_errors", "continuation_required")}
                 result.update(version=version, posts=[{**entry, "content": json.loads(self.server.client.request(
                     "GET", "/posts/" + entry["id"])["content"])} for entry in state["posts"]],
                     calls=[{k: call.get(k) for k in ("id", "actor", "phase", "status", "round", "failure")} for call in state["calls"].values()],

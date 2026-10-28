@@ -321,6 +321,81 @@ tick(p,SimulatedBackend(),now=1060)
             self.assertNotIn("token", json.dumps(state))
             self.assertEqual(browser.get(base, headers={"Host": "another-origin.invalid"}).status_code, 403)
 
+    def test_long_run_archives_payloads_and_rebuilds_memory_without_losing_audit(self):
+        project = self.project(mode="collaborative", max_rounds=12)
+        backend = SimulatedBackend()
+        for _ in range(12):
+            project.advance(backend)
+        state, _ = project.file.read()
+        self.assertEqual(len(state["calls"]), 108)
+        self.assertTrue(any(c.get("archive") for c in state["calls"].values()))
+        self.assertLess(len(json.dumps({"content": json.dumps(state)}).encode()), 1_000_000)
+        self.assertTrue(all(c["status"] == "completed" for c in state["calls"].values()))
+        actor = next(iter(state["agents"]))
+        memory = project.directory / "agents" / actor / "memory"
+        old_index_size = len(Memory(memory).index()["notes"])
+        memory.rename(memory.with_name("memory_before_rebuild"))
+        project.request_for(state, actor, "propose", {"number": 13, "question_revision": 1})
+        self.assertEqual(len(Memory(memory).index()["notes"]), old_index_size)
+        exported = project.export(project.directory / "long-run-export")
+        self.assertTrue(all("request" in c and "output" in c for c in exported["state"]["calls"].values()))
+        archived = next(c for c in state["calls"].values() if c.get("archive"))
+        wrong = copy.deepcopy(archived)
+        wrong["archive"]["sha256"] = "wrong-fingerprint"
+        with self.assertRaises(RuntimeError):
+            project.call_details(wrong)
+
+    def test_archive_response_loss_reconciles_and_unknown_attempts_stay_inline(self):
+        for stage in ("archive", "state"):
+            with self.subTest(stage=stage):
+                project = self.project()
+                project.advance(SimulatedBackend())
+                def inject(state):
+                    state["calls"]["unknown-fixture"] = {"id": "unknown-fixture", "actor": next(iter(state["agents"])),
+                        "status": "unknown", "backend": "simulated", "phase": "plan", "round": 2,
+                        "request": {"fixture": "unknown outcomes must not be retired"}}
+                project.file.update("unknown-archive-fixture", inject)
+                original = self.client.request
+                lost = []
+                def request(method, path, body=None, **kwargs):
+                    result = original(method, path, body, **kwargs)
+                    relevant = "/execution/archive/" in path if stage == "archive" else (
+                        path.endswith("state.json") and "invocation_payloads_archived" in body.get("content", "") if body else False)
+                    if method == "PUT" and relevant and not lost:
+                        lost.append(True)
+                        raise requests.ConnectionError("Fixture archive commit succeeded but response was lost")
+                    return result
+                with patch.object(self.client, "request", side_effect=request):
+                    if stage == "archive":
+                        with self.assertRaises(requests.ConnectionError):
+                            project.archive_history(threshold=0)
+                    else:
+                        project.archive_history(threshold=0)
+                project.archive_history(threshold=0)
+                state, _ = project.file.read()
+                self.assertIn("request", state["calls"]["unknown-fixture"])
+                self.assertNotIn("archive", state["calls"]["unknown-fixture"])
+                self.assertEqual(sum(e["kind"] == "invocation_payloads_archived" for e in state["events"]), 1)
+
+    def test_full_compact_index_blocks_dispatch_while_preserving_export(self):
+        project = self.project()
+        project.advance(SimulatedBackend())
+        project.file.update("full-index-fixture", lambda s: s.update(storage_padding="x" * 451000))
+        class Counting(SimulatedBackend):
+            calls = 0
+            def call(self, *args, **kwargs):
+                self.calls += 1
+                return super().call(*args, **kwargs)
+        backend = Counting()
+        with self.assertRaisesRegex(RuntimeError, "bounded capacity"):
+            project.advance(backend)
+        self.assertEqual(backend.calls, 0)
+        state, _ = project.file.read()
+        self.assertEqual(state["status"], "blocked")
+        self.assertEqual(state["last_errors"], ["storage_capacity"])
+        exported = project.export(project.directory / "capacity-export")
+        self.assertEqual(len(exported["state"]["calls"]), 3)
+
 
 if __name__ == "__main__":
     unittest.main()
