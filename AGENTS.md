@@ -54,6 +54,8 @@
 
 ## Current next step
 
+ADR 0013 completes native material ingestion, finite extension, qualified cross-project linking and explicit recovery controls. Reuse Project and cross_memory methods; browser callers cannot select server file paths. Retry requests from the UI bind expected_call_id to prevent stale authorizations. Include retired attempts when classifying/displaying execution history. Material ingestion is bounded to 80 lines / 12000 UTF-8 bytes without silent truncation. Native UI capability does not establish real exploration quality.
+
 ADR 0011 adds optional direction forks and own-route reopening, preserving consent/version checks and all control isolation. Fixed-direction ablations reject forks in validation. New evaluation protocols bind implementation/script/lock/patch fingerprints; a runtime change requires a newly frozen campaign for additional calls. Historical exports must remain readable across implementation upgrades.
 
 ADR 0010 handles the upstream 1 MB JSON limit with immutable invocation archives in the same workspace. Only completed/retired payloads are compacted; active/unknown attempts remain inline. Always load archived plans/outputs through Project.call_details, and expand them on export. A compact index above 450 KB blocks new dispatch and requires an explicit exported/qualified continuation; do not claim infinite single-project retention.

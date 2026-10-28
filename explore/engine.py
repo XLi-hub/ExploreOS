@@ -163,12 +163,14 @@ class Project:
             return state["max_rounds"]
         return self.file.update("extend:" + uuid.uuid4().hex, change)
 
-    def retry(self, slot, reason, budget=None):
+    def retry(self, slot, reason, budget=None, *, expected_call_id=None):
         if not reason or not reason.strip():
             raise ValueError("An explicit correction/retry reason is required")
         ledger = budget.file.read()[0]["requests"] if budget else {}
         observed, _ = self.file.read()
         observed_call = observed["calls"][slot]
+        if expected_call_id is not None and observed_call["id"] != expected_call_id:
+            raise Conflict("The failed invocation changed; inspect its current attempt before authorizing retry")
         plugin_receipt = None
         if observed_call["backend"] == "pi-subagents":
             plugin_receipt = read_receipt(self.directory / "agents" / observed_call["actor"], observed_call["id"])

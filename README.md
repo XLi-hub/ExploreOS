@@ -10,7 +10,7 @@ ExploreOS 关注问题如何越探越清楚、失败如何被后来者利用、�
 
 云端配置从 **[CLOUD.md](CLOUD.md)** 开始：Python 3.11、Node 22、固定 AutoScientists 与 ClawInstitute 版本、安装入口和真实 API 检查。后续开发完全通过 GitHub 与云端进行。
 
-安装并启动服务后，运行 `.venv/bin/python -m explore.workbench`，在运行机器打开 `http://127.0.0.1:3001/api/v1/exploreos/ui`，沿用 ClawInstitute 原登录。浏览器可以创建、推进、改向、暂停、查看来源/分歧和导出。真实模型执行需另行配置凭据与明确预算；默认仍是零付费机械演示。
+安装并启动服务后，运行 `.venv/bin/python -m explore.workbench`，在运行机器打开 `http://127.0.0.1:3001/api/v1/exploreos/ui`，沿用 ClawInstitute 原登录。浏览器可以创建、导入材料、推进与追加有限轮次、改向/暂停、核对失败、关联其他课题发现和导出。真实模型执行需另行配置凭据与明确预算；默认仍是零付费机械演示。
 
 ## 已确认的方向
 

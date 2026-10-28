@@ -3,6 +3,7 @@ import json
 import os
 import re
 import sys
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from .credentials import model_key
@@ -11,6 +12,7 @@ from .engine import Project
 from .models import SimulatedBackend
 from .store import Client
 
+MAX_CONTROL_BYTES = 96000  # Fits a 12 KB source even when JSON escapes each byte.
 
 class NativeService:
     def __init__(self, client=None):
@@ -39,20 +41,43 @@ class NativeService:
 
     def state(self, project):
         state, version = project.file.read()
+        attempts = [*state["calls"].values(), *state.get("retired_calls", {}).values()]
+        fields = ("id", "actor", "phase", "status", "round", "failure", "backend")
         result = {key: state.get(key) for key in ("name", "status", "mode", "question_revisions", "directions",
             "changes", "direction_history", "knowledge", "reviews", "source_assessments", "rounds", "schedule",
-            "schedule_notifications", "cross_project_memory", "last_errors", "continuation_required")}
+            "schedule_notifications", "cross_project_memory", "last_errors", "continuation_required",
+            "max_rounds", "max_concurrency", "evaluation_binding")}
         result.update(version=version, posts=[{**entry, "content": json.loads(self.client.request(
             "GET", "/posts/" + entry["id"])["content"])} for entry in state["posts"]],
-            calls=[{key: call.get(key) for key in ("id", "actor", "phase", "status", "round", "failure")}
-                   for call in state["calls"].values()], events=state["events"][-100:],
+            calls=[{"slot": slot, **{key: call.get(key) for key in fields}}
+                   for slot, call in state["calls"].items()], events=state["events"][-100:],
+            retired_calls=[{key: call.get(key) for key in fields} for call in state.get("retired_calls", {}).values()],
+            participant_count=len(state["agents"]),
             sources=[project.read_source(source) for source in state["sources"]],
             observation=state.get("runtime_observation"), workshop=project.metadata["workshop"],
             native_workspace_url="/m/" + project.metadata["workshop"],
             native_files_url="/workspace/" + project.metadata["workspace_id"],
-            record_kind=("not_run" if not state["calls"] else "mechanical_fixture" if all(
-                call["backend"] == "simulated" for call in state["calls"].values()) else "real_model_execution"))
+            record_kind=("not_run" if not attempts else "mechanical_fixture" if all(
+                call["backend"] == "simulated" for call in attempts) else "real_model_execution" if any(
+                call["backend"] != "simulated" and call["status"] == "completed" for call in attempts)
+                else "incomplete_execution_case"))
+        from .cross_memory import recall
+        result["linked_memory_observations"] = recall(self.client, state)
         return result
+
+    def add_source(self, project, data):
+        title, text = data.get("title"), data.get("text")
+        if (not isinstance(title, str) or not 1 <= len(title.strip()) <= 160
+                or not isinstance(text, str) or not text.strip() or "\x00" in text
+                or len(text.encode("utf-8")) > 12000 or len(text.splitlines()) > 80):
+            raise ValueError("Supply a title (1–160 characters) and nonempty UTF-8 material of at most 80 lines / 12000 bytes")
+        project.assert_input_change_allowed(project.file.read()[0])
+        folder = project.directory / "materials"
+        folder.mkdir(exist_ok=True, mode=0o700)
+        destination = folder / ("user_" + uuid.uuid4().hex + ".md")
+        with open(destination, "x", encoding="utf-8", opener=lambda name, flags: os.open(name, flags, 0o600)) as output:
+            output.write(text)
+        return project.add_source(destination, title.strip())
 
     def advance(self, project, data):
         backend = data.get("backend", "simulated")
@@ -113,10 +138,20 @@ class NativeService:
         elif action == "assess":
             project.assess_source(data["post_id"], data["basis_sha256"], data["verdict"], data["reason"],
                                   data.get("reviewer", "user"), data["scope"], data["assessment_id"])
-        elif action == "reconcile":
+        elif action in ("reconcile", "retry"):
             from scripts.probe_native import session_budget
             budget = session_budget(self.client) if (ROOT / ".research/session-budget.json").exists() else None
-            project.reconcile(budget)
+            if action == "reconcile":
+                project.reconcile(budget)
+            else:
+                if not isinstance(data.get("call_id"), str) or not data["call_id"]:
+                    raise ValueError("Choose the actual failed invocation before authorizing retry")
+                project.retry(data["slot"], data["reason"], budget, expected_call_id=data["call_id"])
+        elif action == "add-source":
+            self.add_source(project, data)
+        elif action == "link-memory":
+            from .cross_memory import link
+            link(project, self.project(data["origin_name"]), data["post_id"], data["conditions"], data["reason"])
         elif action == "extend":
             project.extend(data.get("rounds", 1))
         elif action == "advance":
@@ -128,8 +163,8 @@ class NativeService:
 
 def main():
     try:
-        raw = sys.stdin.buffer.read(16001)
-        if len(raw) > 16000:
+        raw = sys.stdin.buffer.read(MAX_CONTROL_BYTES + 1)
+        if len(raw) > MAX_CONTROL_BYTES:
             raise ValueError("Native control payload exceeds its bound")
         result = NativeService().handle(json.loads(raw))
         print(json.dumps({"ok": True, "data": result}, ensure_ascii=False))

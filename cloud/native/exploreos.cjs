@@ -12,7 +12,7 @@ function install(app) {
   const express=require(require.resolve('express',{paths:[packageRoot]}));
   const {requireAuth}=require(path.join(packageRoot,'src/middleware/auth.js'));
   const api=express.Router(),active=new Map();
-  const allowed=new Set(['pause','resume','cancel','steer','challenge','assess','reconcile','extend','advance']);
+  const allowed=new Set(['pause','resume','cancel','steer','challenge','assess','reconcile','retry','extend','advance','add-source','link-memory']);
   function headers(res){
     res.set('Cache-Control','no-store');res.set('X-Content-Type-Options','nosniff');
     res.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'none'");
@@ -38,7 +38,7 @@ function install(app) {
   });
   function run(payload,response,background=false){
     const encoded=JSON.stringify(payload);
-    if(Buffer.byteLength(encoded)>16000)return response.status(400).json({error:'Use a smaller control request'});
+    if(Buffer.byteLength(encoded)>96000)return response.status(400).json({error:'Use a smaller control request'});
     const child=spawn(python,['-m','explore.native'],{cwd:root,env:process.env,stdio:['pipe','pipe','pipe']});
     let output='';child.stdin.on('error',()=>{});child.stdin.end(encoded);child.stderr.resume();
     if(background){
