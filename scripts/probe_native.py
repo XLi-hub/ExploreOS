@@ -8,13 +8,14 @@ import sys
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from explore.credentials import model_key
 from explore.models import ClaudeBackend, Gateway, PiBackend
 from explore.subagents import SubagentsBackend
 from explore.store import Budget, Client, JsonFile, atomic_local
 from scripts.cloud.runtime import ROOT
 
 
-def session_budget(client, limit=None):
+def session_budget(client, limit=None, max_calls=None):
     reference = ROOT / ".research/session-budget.json"
     reference.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     import fcntl
@@ -25,14 +26,14 @@ def session_budget(client, limit=None):
             file = JsonFile(client, workspace, "execution/session-budget.json")
             existing, _ = file.read()
             return Budget(file, limit=existing["limit_cny"] if limit is None else limit,
-                          prior=existing["prior_cny"], max_calls=existing["max_calls"])
+                          prior=existing["prior_cny"], max_calls=existing["max_calls"] if max_calls is None else max_calls)
         else:
             if limit is None:
                 raise RuntimeError("Create a model budget explicitly with --budget-cny before the first paid run")
             workspace = client.request("POST", "/workspaces", {"title": "Authorized development model budget"})["id"]
         m0 = ROOT / ".runtime/m0-live/result.json"
         prior = json.loads(m0.read_text())["reserved_ceiling_cny"] if m0.exists() else 0
-        budget = Budget(JsonFile(client, workspace, "execution/session-budget.json"), limit=limit, prior=prior)
+        budget = Budget(JsonFile(client, workspace, "execution/session-budget.json"), limit=limit, prior=prior, max_calls=64 if max_calls is None else max_calls)
         atomic_local(reference, {"workspace_id": workspace})
         return budget
 
@@ -41,10 +42,11 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--budget-cny", type=float, help="Explicit limit for a new pool; omit to reuse an existing pool")
+    parser.add_argument("--budget-max-calls", type=int, help="Finite request cap for a new pool; existing caps never reset")
     parser.add_argument("--backend", choices=("pi", "claude", "pi-subagents"), default="pi")
     args = parser.parse_args()
-    key = os.environ.get("DEEPSEEK_API_KEY") or getpass.getpass("DeepSeek API key (hidden): ")
-    budget = session_budget(Client(), limit=args.budget_cny)
+    key = model_key() or getpass.getpass("DeepSeek API key (hidden): ")
+    budget = session_budget(Client(), limit=args.budget_cny, max_calls=args.budget_max_calls)
     gateway = Gateway(key, budget)
     call_id = "native-compat-" + uuid.uuid4().hex
     try:

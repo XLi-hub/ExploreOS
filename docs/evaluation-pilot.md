@@ -40,7 +40,7 @@ freeze 不需要模型或服务。它快照材料，固定模型标识、输出�
 .venv/bin/python -m explore.evaluation export mechanics
 ~~~
 
-默认 advance 为模拟执行。相同 campaign 再次 advance 会跳过已完成案例；每个案例仍使用原来的项目、调用身份和恢复状态。暂停或失败的案例需要先到对应项目 status/reconcile/retry 处理，不自动重试未知请求。案例的材料、问题干预、语义策略或额度若偏离冻结协议，会停止并报冲突。
+默认 advance 为模拟执行。相同 campaign 再次 advance 会跳过已完成案例；每个案例仍使用原来的项目、调用身份和恢复状态。暂停或失败的案例需要先到对应项目 status/reconcile/retry 处理，不自动重试未知请求。案例的材料、问题干预、人数、并发、语义策略或额度若偏离冻结协议，会停止并报冲突。已绑定案例禁止手工增加材料、改向、追加轮次、跨课题记忆、定时配置及绕过 campaign 执行；完成全部轮次后允许独立署名核查。
 
 真实调用必须使用另一个 campaign，并已配置 `DEEPSEEK_API_KEY` 和明确共享预算：
 
@@ -48,7 +48,7 @@ freeze 不需要模型或服务。它快照材料，固定模型标识、输出�
 .venv/bin/python -m explore.evaluation advance pilot --live --backend pi --budget-cny AUTHORIZED_TOTAL_LIMIT --maximum-cases 1
 ~~~
 
-不要直接运行金额占位符。已有共享预算不因重复运行或新案例清零；耗尽后不开始新请求。默认完整设计是 8 × 7 × 3 = 168 个两轮案例，不宜在没有明确总预算时一次性启动。供应商型号使用实际模型标识和运行回执；SDK 锁定不等于供应商权重版本已冻结。
+不要直接运行金额占位符。新池可另传 `--budget-max-calls` 设置有限请求总数（默认 64，完整 168 案例需预先规划更大的有限上限）；已有池不允许覆盖金额或请求上限。凭据也可使用权限 600 的 `.runtime/secrets/deepseek-api-key`，见 [工作台配置](workbench.md)。已有共享预算不因重复运行或新案例清零；耗尽后不开始新请求。默认完整设计是 8 × 7 × 3 = 168 个两轮案例，不宜在没有明确总预算时一次性启动。供应商型号使用实际模型标识和运行回执；SDK 锁定不等于供应商权重版本已冻结。
 
 ## 匿名评阅与报告
 

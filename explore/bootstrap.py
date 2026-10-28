@@ -66,18 +66,18 @@ def _launch_owned(client, name, question=None, participants=3):
     if destination.exists():
         raise RuntimeError("Project directory already exists; use status/continue instead")
     launcher = prepare()
-    task = ROOT / "examples/open-exploration"
     if type(participants) is not int or not 1 <= participants <= 8:
         raise ValueError("Choose 1–8 exploration participants")
-    if question is not None or participants != 3:
-        question = question or "如何让本项目从多智能体演示走向可持续、可核对的开放探索？"
-        if not isinstance(question, str) or not question.strip():
-            raise ValueError("An open question must contain text")
-        task = STATE / "open-tasks" / name
-        task.mkdir(parents=True, exist_ok=True, mode=0o700)
-        (task / "TASK.md").write_text("---\ntask_type: open_exploration\nname: " + name +
-            f"\nparticipants: {participants}\n---\n\n" + question + "\n\nPreserve competing explanations and unresolved questions. Numeric goals, datasets, experiments and papers are optional.\n")
-        shutil.copy2(ROOT / "examples/open-exploration/LAUNCH.md", task / "LAUNCH.md")
+    question = question or "如何让本项目从多智能体演示走向可持续、可核对的开放探索？"
+    if not isinstance(question, str) or not question.strip():
+        raise ValueError("An open question must contain text")
+    task = STATE / "open-tasks" / name
+    task.mkdir(parents=True, exist_ok=True, mode=0o700)
+    (task / "TASK.md").write_text("---\ntask_type: open_exploration\nname: " + name +
+        f"\nparticipants: {participants}\n---\n\n" + question +
+        f"\n\n[ExploreOS 探索视图](/api/v1/exploreos/ui#{name}) · 问题版本、方向、来源和继续入口。\n\n" +
+        "Preserve competing explanations and unresolved questions. Numeric goals, datasets, experiments and papers are optional.\n")
+    shutil.copy2(ROOT / "examples/open-exploration/LAUNCH.md", task / "LAUNCH.md")
     environment = os.environ.copy()
     # The release widens workshop names but still stores denormalized slugs in
     # VARCHAR(24) workspace/post columns. Keep native IDs within that boundary.

@@ -21,7 +21,7 @@ from explore.evaluation import Campaign, DIMENSIONS, freeze_pack, validate_froze
 from explore.memory import Memory
 from explore.models import SimulatedBackend
 from explore.store import Budget, Client, Conflict, JsonFile
-from explore.workbench import Workbench
+from explore.native import NativeService
 from scripts.cloud.runtime import ROOT
 
 
@@ -30,6 +30,22 @@ def name(prefix):
 
 
 class FrozenProtocolTests(unittest.TestCase):
+    def test_model_credential_uses_private_configuration_and_environment_precedence(self):
+        import os
+        from explore import credentials
+        with tempfile.TemporaryDirectory() as temporary, patch.object(credentials, "ROOT", Path(temporary)), patch.dict(os.environ, {}, clear=True):
+            self.assertIsNone(credentials.model_key())
+            path = Path(temporary) / ".runtime/secrets/deepseek-api-key"
+            path.parent.mkdir(parents=True)
+            path.write_text("fake-test-key\n")
+            path.chmod(0o600)
+            self.assertEqual(credentials.model_key(), "fake-test-key")
+            path.chmod(0o644)
+            with self.assertRaises(RuntimeError):
+                credentials.model_key()
+            with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "fake-env-key"}):
+                self.assertEqual(credentials.model_key(), "fake-env-key")
+
     def test_fixed_pack_has_eight_tasks_and_reproducible_materials(self):
         pack = ROOT / "examples/evaluation/pilot.json"
         first = freeze_pack(pack, seed="fixed-seed")
@@ -74,6 +90,16 @@ class FrozenProtocolTests(unittest.TestCase):
         validate_frozen(frozen)
         with self.assertRaises(ValueError):
             validate_frozen(frozen, require_runtime=True)
+        unsafe = freeze_pack(ROOT / "examples/evaluation/pilot.json", seed="unsafe-source-id")
+        unsafe["protocol"]["tasks"][0]["sources"][0]["id"] = "../outside"
+        unsafe["protocol_sha256"] = digest(unsafe["protocol"])
+        with self.assertRaises(ValueError):
+            validate_frozen(unsafe)
+        unsafe["protocol"]["tasks"][0]["sources"][0]["id"] = "source0"
+        unsafe["protocol"]["repeats"] = 1000000
+        unsafe["protocol_sha256"] = digest(unsafe["protocol"])
+        with self.assertRaises(ValueError):
+            validate_frozen(unsafe)
 
 
 class RoadmapIntegrationTests(unittest.TestCase):
@@ -84,10 +110,37 @@ class RoadmapIntegrationTests(unittest.TestCase):
         return Project.create(self.client, name("road_"), mode=mode,
                               question="Which assumptions should an open discussion revisit?", sources=[], **kwargs)
 
+    def test_shared_budget_request_cap_and_prior_usage_survive_reopening(self):
+        from scripts import probe_native
+        from explore.store import AdmissionError
+        with tempfile.TemporaryDirectory() as temporary, patch.object(probe_native, "ROOT", Path(temporary)):
+            budget = probe_native.session_budget(self.client, limit=5, max_calls=80)
+            budget.admit("fixture-reservation", 100, 100)
+            before, _ = budget.file.read()
+            reopened = probe_native.session_budget(self.client)
+            self.assertEqual(reopened.file.read()[0], before)
+            self.assertEqual(before["max_calls"], 80)
+            for change in ({"limit": 6}, {"max_calls": 81}):
+                with self.assertRaises(AdmissionError):
+                    probe_native.session_budget(self.client, **change)
+            self.assertEqual(reopened.file.read()[0], before)
+
     def test_campaign_restarts_without_repeating_completed_cases_and_retains_blind_reviews(self):
         frozen = freeze_pack(ROOT / "examples/evaluation/pilot.json", repeats=1,
                              variants=["single", "collaborative"], seed="test-seed")
         campaign = Campaign.prepare(self.client, name("eval_"), frozen)
+        initial, _ = campaign.file.read()
+        project, _ = campaign.project(initial, initial["cases"][0])
+        with self.assertRaises(ValueError):
+            project.advance(SimulatedBackend())
+        with self.assertRaises(ValueError):
+            project.control("steer", "An unregistered intervention")
+        with self.assertRaises(ValueError):
+            project.add_source(str(ROOT / "examples/feedback/initial.md"))
+        with self.assertRaises(ValueError):
+            project.extend(1)
+        with self.assertRaises(ValueError):
+            schedule.configure(project, 60)
         class Counting(SimulatedBackend):
             count = 0
             def call(self, *args, **kwargs):
@@ -304,32 +357,31 @@ tick(p,SimulatedBackend(),now=1060)
         schedule.disable(project, cancel=True)
         self.assertEqual(project.file.read()[0]["status"], "paused")
 
-    def test_workbench_controls_are_same_origin_and_preserve_question_history(self):
+    def test_native_views_reuse_upstream_auth_and_preserve_question_history(self):
         project = self.project()
-        server = Workbench(("127.0.0.1", 0), self.client)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        self.addCleanup(lambda: server.workers.shutdown(wait=True, cancel_futures=True))
-        self.addCleanup(server.server_close)
-        self.addCleanup(server.shutdown)
-        base = f"http://127.0.0.1:{server.server_port}"
+        task = self.client.request("GET", f"/workspaces/{project.metadata['workspace_id']}/files/task.md")["content"]
+        self.assertIn(f"[ExploreOS 探索视图](/api/v1/exploreos/ui#{project.directory.name})", task)
+        base = self.client.base + "/exploreos"
+        origin = self.client.base.rsplit("/api/v1", 1)[0]
         with requests.Session() as browser:
             browser.trust_env = False
-            page = browser.get(base)
+            page = browser.get(base + "/ui")
             self.assertEqual(page.status_code, 200)
-            self.assertIn("ExploreOS", page.text)
-            self.assertIn("frame-ancestors 'none'", page.headers["Content-Security-Policy"])
-            route = base + f"/api/project/{project.directory.name}/steer"
-            self.assertEqual(browser.post(route, json={"question": "new"}).status_code, 403)
-            headers = {"X-ExploreOS-Session": server.session, "Origin": "https://another-origin.invalid"}
+            self.assertIn("ClawInstitute", page.text)
+            self.assertIn("frame-ancestors 'self'", page.headers["Content-Security-Policy"])
+            route = base + f"/project/{project.directory.name}/steer"
+            self.assertEqual(browser.post(route, json={"question": "new"}).status_code, 401)
+            headers = {"Authorization": "Bearer " + self.client.token, "Origin": "https://another-origin.invalid"}
             self.assertEqual(browser.post(route, json={"question": "new"}, headers=headers).status_code, 403)
-            headers["Origin"] = base
+            headers["Origin"] = origin
             result = browser.post(route, json={"question": "Now consider changed assumptions"}, headers=headers)
             self.assertEqual(result.status_code, 200, result.text)
-            state = browser.get(base + f"/api/project/{project.directory.name}/state", headers=headers).json()
+            state = browser.get(base + f"/project/{project.directory.name}/state", headers=headers).json()
             self.assertEqual(len(state["question_revisions"]), 2)
-            self.assertNotIn("token", json.dumps(state))
-            self.assertEqual(browser.get(base, headers={"Host": "another-origin.invalid"}).status_code, 403)
+            self.assertTrue(self.client.token not in json.dumps(state))
+            self.assertEqual(browser.post(base + f"/project/{project.directory.name}/advance",
+                json={"backend": "misspelled-provider"}, headers=headers).status_code, 400)
+            self.assertEqual(browser.get(base + "/projects", headers={"Authorization": "Bearer " + self.client.token, "Host": "another-origin.invalid"}).status_code, 403)
 
     def test_long_run_archives_payloads_and_rebuilds_memory_without_losing_audit(self):
         project = self.project(mode="collaborative", max_rounds=12)

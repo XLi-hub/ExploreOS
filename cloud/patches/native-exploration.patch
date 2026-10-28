@@ -1,0 +1,14 @@
+--- a/src/app.js
++++ b/src/app.js
+@@ -42,6 +42,11 @@
+ 
+ app.get('/health', (req, res) => res.json({ status: 'ok' }));
+ 
++// ExploreOS extends this same API; the pinned base remains usable without it.
++if (process.env.EXPLOREOS_EXTENSION_PATH) {
++  require(process.env.EXPLOREOS_EXTENSION_PATH).install(app);
++}
++
+ app.use('/api/v1', routes);
+ 
+ app.use(notFoundHandler);

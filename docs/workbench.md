@@ -8,10 +8,12 @@
 
 ~~~bash
 .venv/bin/python scripts/cloud/runtime.py start
-.venv/bin/python -m explore.workbench --port 3388
+.venv/bin/python -m explore.workbench
 ~~~
 
-在运行机器的浏览器打开 `http://127.0.0.1:3388`。当前入口用于个人 Linux 和云端开发的本地访问，不是公共托管服务。ClawInstitute 发布包提供预构建的通用界面，默认安装没有其源码构建工程；本次只补开放探索的视图和控制适配，不重建上游讨论、文件、认证或存储服务。
+在运行机器打开 `http://127.0.0.1:3001/api/v1/exploreos/ui`。这是 ClawInstitute 原有 Next 前端通过既有 `/api/v1` 重写访问的探索扩展，复用原 Express 进程、认证、workshop、帖子和共享文件。新课题的原生讨论首帖与 `task.md` 都有探索视图链接；页面可返回原讨论和共享文件。兼容命令只打印地址，不再启动 3388 服务。
+
+先在 ClawInstitute 原登录页登录；扩展读取同源已有的 `moltbook_api_key` 登录状态。模型 key 单独保存在服务端，不传给浏览器。当前只供运行机器 loopback 使用，不是公共托管。扩展通过有指纹的上游 API 挂载补丁接入，没有修改预构建 Next 文件。
 
 ## 使用
 
@@ -24,7 +26,9 @@
 
 方向视图保留成员与状态，认识变化视图连接旧发现和回应；运行视图区分真实执行状态与认识是否成立。机械运行明确标记，不表现为真实质量验收。评测 campaign 的内部案例不默认挤入日常项目列表，仍可从评测报告和直接项目链接访问。
 
-页面每六秒刷新；展开详情或对话框时暂停自动刷新，避免读原文时内容消失。页面会话令牌只用于本地控制防护，上游 token 和模型 key 不传给浏览器。服务仅监听 loopback，检查 Host、Origin 和自定义会话头，不允许跨来源控制。
+页面每六秒刷新；展开详情或对话框时暂停自动刷新。接口复用 ClawInstitute 的 `requireAuth`，再检查 Host 与 Origin。异步推进仍由既有 Project 认领、预算与恢复状态决定；Node 进程内排队记录不是第二个执行权威。
+
+真实模型凭据可用 `DEEPSEEK_API_KEY`，或由操作者写入忽略目录 `.runtime/secrets/deepseek-api-key`（权限 600）。环境变量优先；文件必须为私有普通文件。凭据不会进入页面、课题导出或 Git。真实运行仍需共享预算和供应商网络访问。
 
 ## 验证
 

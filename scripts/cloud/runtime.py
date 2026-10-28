@@ -110,7 +110,7 @@ def doctor() -> None:
     check_or_apply(check=True)
     print(json.dumps({"python": sys.version.split()[0], "node": version,
                       "upstream": sha, "clawinstitute": package["version"],
-                      "atomic_file_patch": True, "idempotent_publication_patch": True,
+                      "atomic_file_patch": True, "idempotent_publication_patch": True, "native_exploration_patch": True,
                       "research_agents_started": False}, indent=2))
 
 
@@ -132,6 +132,9 @@ def start() -> None:
             raise RuntimeError("Choose ports from 1024 to 65535.")
         if port == frontend_port:
             raise RuntimeError("API and frontend require different ports.")
+        frontend_enabled = os.environ.get("EXPLORE_FRONTEND", "1") != "0"
+        if frontend_enabled and port != 3000:
+            raise RuntimeError("The pinned native UI rewrites to API port 3000; use that port or set EXPLORE_FRONTEND=0 for API-only tasks")
         with socket.socket() as probe:
             # Ignore closed connections in TIME_WAIT; active listeners still reject bind.
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -147,9 +150,12 @@ def start() -> None:
             "CLAWINSTITUTE_TOKEN": TOKEN.read_text().strip(),
             "CLAWINSTITUTE_AUTH_REQUIRED": "1",
             "CLAWINSTITUTE_CHECKPOINT_MS": "1000",
-            "CLAWINSTITUTE_SKIP_FRONTEND": "0" if os.environ.get("EXPLORE_FRONTEND") == "1" else "1",
+            "CLAWINSTITUTE_SKIP_FRONTEND": "0" if frontend_enabled else "1",
             "CLAWINSTITUTE_FRONTEND_PORT": str(frontend_port),
             "CLAWINSTITUTE_FRONTEND_HOSTNAME": "127.0.0.1",
+            "EXPLOREOS_EXTENSION_PATH": str(ROOT / "cloud/native/exploreos.cjs"),
+            "EXPLOREOS_ROOT": str(ROOT),
+            "EXPLOREOS_PYTHON": str(ROOT / ".venv/bin/python"),
         })
         log_path = SERVICE / "server.log"
         with log_path.open("ab") as log:
@@ -159,7 +165,8 @@ def start() -> None:
                 stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
-        private_write(RECORD, json.dumps({"pid": process.pid, "port": port}) + "\n")
+        private_write(RECORD, json.dumps({"pid": process.pid, "port": port, "frontend_port": frontend_port,
+                                         "frontend_enabled": frontend_enabled}) + "\n")
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             if process.poll() is not None:
@@ -167,7 +174,14 @@ def start() -> None:
                 raise RuntimeError("Service exited; inspect the private .runtime/service/server.log.")
             try:
                 api("GET", "/workshops")
+                if frontend_enabled:
+                    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                    with opener.open(f"http://127.0.0.1:{frontend_port}/api/v1/exploreos/ui", timeout=2) as response:
+                        if response.status != 200:
+                            raise RuntimeError("Native exploration UI is not ready")
                 print(f"ClawInstitute ready at http://127.0.0.1:{port}/api/v1 (authenticated).")
+                if frontend_enabled:
+                    print(f"Native ExploreOS view: http://127.0.0.1:{frontend_port}/api/v1/exploreos/ui")
                 return
             except (OSError, RuntimeError, json.JSONDecodeError):
                 time.sleep(0.5)

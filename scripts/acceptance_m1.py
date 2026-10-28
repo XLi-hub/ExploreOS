@@ -10,6 +10,7 @@ import sys
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from explore.credentials import model_key
 from explore.engine import MODES, Project
 from explore.models import ClaudeBackend, Gateway, PiBackend
 from explore.subagents import SubagentsBackend
@@ -27,7 +28,7 @@ if __name__ == "__main__":
     parser.add_argument("--budget-cny", type=float, help="Explicit limit for a new pool; omit to reuse an existing pool")
     parser.add_argument("--backend", choices=("pi", "claude", "pi-subagents"), default="pi")
     args = parser.parse_args()
-    key = os.environ.get("DEEPSEEK_API_KEY") or getpass.getpass("DeepSeek API key (hidden): ")
+    key = model_key() or getpass.getpass("DeepSeek API key (hidden): ")
     client = Client()
     budget = session_budget(client, limit=args.budget_cny)
     project = (Project(client, ROOT / ".research" / args.project) if args.project else

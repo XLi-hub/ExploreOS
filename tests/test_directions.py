@@ -139,6 +139,10 @@ class DirectionTests(unittest.TestCase):
             project.validate(output, call["request"])
         request = copy.deepcopy(call["request"])
         request["semantic_policy"]["direction_changes"] = True
+        legacy_request = copy.deepcopy(request)
+        legacy_request.pop("direction_forks_enabled")
+        with self.assertRaises(ValueError):
+            project.validate(output, legacy_request)
         output["change"]["target"] = next(iter(state["directions"]))
         with self.assertRaises(ValueError):
             project.validate(output, request)

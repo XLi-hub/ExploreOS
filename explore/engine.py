@@ -98,11 +98,13 @@ class Project:
         return project
 
     def add_source(self, path, title=None):
+        self.assert_input_change_allowed(self.file.read()[0])
         source_id = "source_" + uuid.uuid4().hex[:12]
         source = source_snapshot(source_id, title or Path(path).name, str(path), 1, 80)
         self.client.request("PUT", f"/workspaces/{self.file.workspace}/files/sources/{source_id}.json",
                             {"content": json.dumps(source, ensure_ascii=False)}, version=0)
         def add(state):
+            self.assert_input_change_allowed(state)
             state["sources"][source_id] = {key: value for key, value in source.items() if key != "lines"}
             self.event(state, "source_added", source_id=source_id, sha256=source["sha256"])
             return source_id
@@ -110,6 +112,13 @@ class Project:
 
     def event(self, state, kind, **values):
         state["events"].append({"sequence": len(state["events"]) + 1, "kind": kind, "time_ns": time.time_ns(), **values})
+
+    @staticmethod
+    def assert_input_change_allowed(state, *, after_completion=False):
+        complete = (len(state["rounds"]) == state["max_rounds"] and
+                    all(r["status"] == "completed" for r in state["rounds"]))
+        if state.get("evaluation_binding") and not (after_completion and complete):
+            raise ValueError("Evaluation inputs are frozen; use a new campaign for semantic changes")
 
     def status(self):
         state, version = self.file.read()
@@ -134,6 +143,7 @@ class Project:
                     raise RuntimeError("Reconcile outstanding invocations before resuming")
                 state["status"] = "active"
             elif command == "steer":
+                self.assert_input_change_allowed(state)
                 if not question or not question.strip():
                     raise ValueError("A new user focus is required")
                 state["question_revisions"].append({"number": len(state["question_revisions"]) + 1,
@@ -146,6 +156,7 @@ class Project:
         if type(rounds) is not int or not 1 <= rounds <= 20:
             raise ValueError("Authorize 1–20 additional finite rounds at a time")
         def change(state):
+            self.assert_input_change_allowed(state)
             state["max_rounds"] += rounds
             self.event(state, "round_allowance_extended", additional_rounds=rounds,
                        qualification="Supplier budget is unchanged")
@@ -197,6 +208,7 @@ class Project:
 
     def challenge(self, target_post, reason, source_id=None, author_type="user"):
         state, _ = self.file.read()
+        self.assert_input_change_allowed(state, after_completion=True)
         entry = next((p for p in state["posts"] if p["id"] == target_post and p["phase"] == "reflect"), None)
         if not entry or not reason or not reason.strip():
             raise ValueError("Choose a finding in this project and provide a concrete challenge")
@@ -325,6 +337,7 @@ class Project:
         state, _ = self.file.read()
         if existing(state) is not None:
             return assessment_id
+        self.assert_input_change_allowed(state, after_completion=True)
         audit = self.audit_source(post_id)
         if audit["basis_sha256"] != basis_sha256:
             raise Conflict("Audit basis changed; inspect a fresh source-audit before assessing")
@@ -416,6 +429,7 @@ class Project:
         request["review_context"] = review_context
         request["peer_critique_enabled"] = state["mode"] == "collaborative" and phase == "reflect" and semantic_policy["peer_critique"]
         request["semantic_policy"] = semantic_policy
+        request["direction_forks_enabled"] = True
         request["cross_project_memory"] = cross_memory.recall(self.client, state) if phase != "propose" else []
         if phase == "propose":
             request["contract"] = {"direction": "一个暂定探索方向，避免声称已验证", "reason": "方向理由", "summary": "私有工作摘要"}
@@ -550,6 +564,8 @@ class Project:
                         or any(not isinstance(link, str) or link not in peer_ids for link in change["influenced_by"])):
                     raise ValueError("Direction change has no valid target or peer basis")
                 if change["kind"] == "fork":
+                    if not request.get("direction_forks_enabled", False):
+                        raise ValueError("Forks were not enabled in this archived request")
                     if (change.get("target") is not None or not isinstance(change.get("title"), str)
                             or not change["title"].strip()):
                         raise ValueError("A fork needs a new title and cannot overwrite an existing direction")
@@ -558,7 +574,7 @@ class Project:
                     if target is None:
                         raise ValueError("Direction change target was not actually supplied")
                     own = target.get("created_by") == request["actor"] or target["id"] == "direction:" + request["actor"]
-                    if not change["influenced_by"] and not (change["kind"] == "reopen" and (own or source is not None)):
+                    if not change["influenced_by"] and not (request.get("direction_forks_enabled", False) and change["kind"] == "reopen" and (own or source is not None)):
                         raise ValueError("Joining a peer direction needs an actual peer basis")
                     if change["kind"] == "reopen" and target["status"] != "paused":
                         raise ValueError("Reopening requires a previously paused direction")
@@ -775,9 +791,27 @@ class Project:
                 failure=failure)
             raise
 
-    def advance(self, backend, *, trigger=None):
+    def advance(self, backend, *, trigger=None, evaluation_case=None):
+        observed, _ = self.file.read()
+        binding = observed.get("evaluation_binding")
+        if binding:
+            if evaluation_case != binding:
+                raise ValueError("Advance a frozen case through its evaluation campaign")
+            from .evaluation import assert_case_inputs, validate_frozen
+            campaign = JsonFile(self.client, binding["campaign_workspace"], "evaluation/campaign.json").read()[0]
+            if campaign["frozen"]["protocol_sha256"] != binding["protocol_sha256"]:
+                raise Conflict("Project binding differs from its frozen campaign")
+            protocol = validate_frozen(campaign["frozen"], require_runtime=True)
+            case = next((c for c in campaign["cases"] if c["id"] == binding["case_id"]), None)
+            if case is None:
+                raise ValueError("Frozen campaign no longer contains this case")
+            assert_case_inputs(observed, protocol, case)
         owner = uuid.uuid4().hex
         def own(state):
+            if state.get("evaluation_binding") != binding:
+                raise Conflict("Evaluation binding changed while claiming execution")
+            if binding:
+                assert_case_inputs(state, protocol, case)
             current = state.get("controller")
             if current and alive(current["process"]):
                 raise RuntimeError("Another live controller owns this project")

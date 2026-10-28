@@ -14,6 +14,7 @@ import re
 import secrets
 import uuid
 
+from .credentials import model_key
 from scripts.cloud.runtime import ROOT
 from .assessments import digest
 from .engine import MODES, Project, source_snapshot
@@ -77,7 +78,7 @@ def freeze_pack(path, *, repeats=3, variants=None, seed=None):
         frozen_tasks.append({**copy.deepcopy(task), "sources": snapshots})
     protocol = {"kind": "evaluation_protocol_v1", "pack_version": raw["version"],
                 "tasks": frozen_tasks, "variants": {v: copy.deepcopy(VARIANTS[v]) for v in variants},
-                "repeats": repeats, "rounds": 2, "max_invocations_per_round": 12,
+                "repeats": repeats, "rounds": 2, "max_invocations_per_round": 12, "max_concurrency": 2,
                 "model": MODEL, "max_output_tokens": OUTPUT_TOKENS,
                 "materials": "frozen_local_snapshots_only", "aggregation": "deterministic_export_no_model",
                 "sampling": {"rule": "hash_order_of_post_ids", "maximum_findings_per_case": 5},
@@ -92,6 +93,11 @@ def validate_frozen(frozen, *, require_runtime=False):
     if digest(frozen["protocol"]) != frozen.get("protocol_sha256"):
         raise ValueError("Frozen evaluation protocol was modified")
     protocol = frozen["protocol"]
+    if (type(protocol.get("repeats")) is not int or not 1 <= protocol["repeats"] <= 10
+            or not 8 <= len(protocol.get("tasks", [])) <= 10
+            or not isinstance(protocol.get("variants"), dict) or not protocol["variants"]
+            or any(key not in VARIANTS or value != VARIANTS[key] for key, value in protocol["variants"].items())):
+        raise ValueError("Frozen task/repetition/control bounds differ from the supported pilot")
     if require_runtime and (protocol["model"] != MODEL or protocol["max_output_tokens"] != OUTPUT_TOKENS):
         raise ValueError("The frozen model/output bound differs from this runtime")
     if require_runtime and (not protocol.get("runtime_manifest") or
@@ -101,9 +107,27 @@ def validate_frozen(frozen, *, require_runtime=False):
     for task in protocol["tasks"]:
         identifier(task["id"])
         for source in task["sources"]:
+            identifier(source["id"])
             if hashlib.sha256("\n".join(source["lines"]).encode()).hexdigest() != source["sha256"]:
                 raise ValueError("Frozen source fingerprint differs from its text")
     return protocol
+
+
+def assert_case_inputs(state, protocol, case):
+    task = next(t for t in protocol["tasks"] if t["id"] == case["task_id"])
+    variant = protocol["variants"][case["variant"]]
+    expected_agents = 1 if variant["mode"] in ("single", "multiple_perspectives") else 3
+    if (state["name"] != case["project_name"] or state["mode"] != variant["mode"]
+            or normalize(state.get("semantic_policy")) != variant["policy"]
+            or len(state["agents"]) != expected_agents or state.get("max_concurrency", 2) != protocol.get("max_concurrency", 2)
+            or state["max_rounds"] != protocol["rounds"]
+            or state["max_invocations_per_round"] != protocol["max_invocations_per_round"]
+            or [(s["id"], s["title"], s["sha256"]) for s in state["sources"].values()] !=
+               [(s["id"], s["title"], s["sha256"]) for s in task["sources"]]
+            or state.get("cross_project_memory")
+            or any(q["text"] != (task["question"] if q["number"] == 1 else task["second_round_focus"])
+                   or q["number"] > 2 or q["author"] != "evaluation_script" for q in state["question_revisions"])):
+        raise Conflict("Case configuration or semantic intervention differs from the frozen protocol")
 
 
 class Campaign:
@@ -201,14 +225,7 @@ class Campaign:
             for case in selected:
                 project, task = self.project(state, case)
                 current, _ = project.file.read()
-                variant = state["frozen"]["protocol"]["variants"][case["variant"]]
-                if (current["mode"] != variant["mode"] or normalize(current.get("semantic_policy")) != variant["policy"]
-                        or current["max_rounds"] != state["frozen"]["protocol"]["rounds"]
-                        or current["max_invocations_per_round"] != state["frozen"]["protocol"]["max_invocations_per_round"]
-                        or [s["sha256"] for s in current["sources"].values()] != [s["sha256"] for s in task["sources"]]
-                        or any(q["text"] != (task["question"] if q["number"] == 1 else task["second_round_focus"])
-                               or q["number"] > 2 or q["author"] != "evaluation_script" for q in current["question_revisions"])):
-                    raise Conflict("Case configuration or user intervention differs from the frozen protocol")
+                assert_case_inputs(current, state["frozen"]["protocol"], case)
                 if len(current["rounds"]) == state["frozen"]["protocol"]["rounds"] and all(
                         r["status"] == "completed" for r in current["rounds"]):
                     continue
@@ -222,7 +239,7 @@ class Campaign:
                                 s["question_revisions"].append({"number": 2, "text": task["second_round_focus"], "author": "evaluation_script"})
                                 project.event(s, "steer", question_revision=2)
                         project.file.update("evaluation-focus:" + case["id"], steer)
-                    project.advance(backend)
+                    project.advance(backend, evaluation_case=current["evaluation_binding"])
                     current, _ = project.file.read()
                     if current["status"] != "active" or any(r["status"] == "cancelled" for r in current["rounds"]):
                         raise RuntimeError("Case paused or cancelled; preserve it for explicit reconciliation")
@@ -361,6 +378,7 @@ def main():
             sub.add_argument("--case-id")
             sub.add_argument("--live", action="store_true")
             sub.add_argument("--budget-cny", type=float)
+            sub.add_argument("--budget-max-calls", type=int, help="Request cap for a new shared pool; cannot overwrite existing limits")
             sub.add_argument("--backend", choices=("pi", "pi-subagents", "claude"), default="pi")
         if command == "review":
             sub.add_argument("blind_id")
@@ -390,8 +408,8 @@ def main():
             from scripts.probe_native import session_budget
             from .models import ClaudeBackend, Gateway, PiBackend
             from .subagents import SubagentsBackend
-            budget = session_budget(client, limit=args.budget_cny)
-            key = os.environ.get("DEEPSEEK_API_KEY") or getpass.getpass("DeepSeek API key (hidden): ")
+            budget = session_budget(client, limit=args.budget_cny, max_calls=args.budget_max_calls)
+            key = model_key() or getpass.getpass("DeepSeek API key (hidden): ")
             gateway = Gateway(key, budget)
             try:
                 selected = {"pi": PiBackend, "pi-subagents": SubagentsBackend, "claude": ClaudeBackend}[args.backend]

@@ -10,6 +10,7 @@ from .store import JsonFile
 
 
 def link(target, origin, post_id, conditions, reason):
+    target.assert_input_change_allowed(target.file.read()[0])
     if target.file.workspace == origin.file.workspace:
         raise ValueError("Choose another project as the memory origin")
     if any(not isinstance(v, str) or not v.strip() or len(v) > 500 for v in (conditions, reason)):
@@ -26,6 +27,7 @@ def link(target, origin, post_id, conditions, reason):
             "claim_truth_verified": False,
             "qualification": "An explicitly linked historical claim, not a cross-project fact or independent evidence"}
     def save(state):
+        target.assert_input_change_allowed(state)
         state.setdefault("cross_project_memory", {})[card_id] = copy.deepcopy(card)
         target.event(state, "cross_project_memory_linked", card_id=card_id, origin_post=post_id)
         return card_id

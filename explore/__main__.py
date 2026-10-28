@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 
+from .credentials import model_key
 from scripts.cloud.runtime import ROOT
 from scripts.probe_native import session_budget
 from .engine import MODES, Project
@@ -73,7 +74,7 @@ def main():
         project = Project(client, directory)
         if args.command == "advance":
             if args.backend in ("pi", "claude", "pi-subagents"):
-                key = os.environ.get("DEEPSEEK_API_KEY") or getpass.getpass("DeepSeek API key (hidden): ")
+                key = model_key() or getpass.getpass("DeepSeek API key (hidden): ")
                 gateway = Gateway(key, session_budget(client, limit=args.budget_cny))
                 try:
                     backend = {"pi": PiBackend, "claude": ClaudeBackend, "pi-subagents": SubagentsBackend}[args.backend]

@@ -8,6 +8,7 @@ import time
 import uuid
 from pathlib import Path
 
+from .credentials import model_key
 from scripts.cloud.runtime import ROOT
 from .engine import Project, alive, process_identity
 from .models import REAL_BACKENDS, SimulatedBackend
@@ -22,6 +23,7 @@ def configure(project, interval_seconds, *, backend="simulated", additional_roun
     due = int(time.time() if now is None else now) + interval_seconds
     operation = "configure-schedule:" + uuid.uuid4().hex
     def change(state):
+        project.assert_input_change_allowed(state)
         if state.get("controller") and alive(state["controller"]["process"]):
             raise Conflict("Pause and drain the current controller before reconfiguring wakeups")
         prior = state.get("schedule", {})
@@ -161,12 +163,12 @@ def main():
     if args.command in ("enable", "tick", "watch") and profile in REAL_BACKENDS:
         from scripts.probe_native import session_budget
         budget = session_budget(client, limit=args.budget_cny)
-        if not os.environ.get("DEEPSEEK_API_KEY"):
+        if not model_key():
             raise RuntimeError("Configure DEEPSEEK_API_KEY for real scheduled execution")
         if args.command in ("tick", "watch"):
             from .models import ClaudeBackend, Gateway, PiBackend
             from .subagents import SubagentsBackend
-            gateway = Gateway(os.environ["DEEPSEEK_API_KEY"], budget)
+            gateway = Gateway(model_key(), budget)
             backend = {"pi": PiBackend, "claude": ClaudeBackend, "pi-subagents": SubagentsBackend}[profile](ROOT, gateway)
     else:
         backend = SimulatedBackend(state["scenario"])
