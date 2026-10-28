@@ -33,3 +33,12 @@
 ## 验证
 
 自动检查覆盖本地 API 的状态读取、问题版本保留、同源控制拒绝和无凭据泄露。另用系统 Chromium + Playwright 实际检查桌面/手机布局、方向/认识变化/材料标签、原始行号和“先查看、再核查”流程。截图只保存在忽略的 `.runtime/` 中；它们不证明真实探索质量。
+
+可复现原登录与完整操作链的检查如下（系统需已有 Chromium，可用 `CHROMIUM_PATH` 指定路径）：
+
+~~~bash
+npm install --prefix .runtime/browser --no-save playwright@1.58.2
+node scripts/check_native_ui.cjs
+~~~
+
+检查只创建新的机械课题，不调用模型或删除既有数据。固定包的登录兼容补丁使前端默认的 `admin` 请求沿用 API 已有的本地管理员身份，仍检查原 bearer token。

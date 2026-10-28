@@ -7,6 +7,7 @@ on:
       - 'scripts/cloud/**'
       - 'scripts/*.py'
       - 'scripts/*.mjs'
+      - 'scripts/*.cjs'
       - 'explore/**'
       - 'tests/**'
       - 'examples/open-exploration/**'
@@ -19,6 +20,7 @@ on:
       - 'scripts/cloud/**'
       - 'scripts/*.py'
       - 'scripts/*.mjs'
+      - 'scripts/*.cjs'
       - 'explore/**'
       - 'tests/**'
       - 'examples/open-exploration/**'
@@ -51,8 +53,12 @@ jobs:
         run: bash scripts/cloud/setup_pi.sh
       - name: Install pinned subagent plugin host without model calls
         run: bash scripts/cloud/setup_subagents.sh
-      - name: Check Python syntax
-        run: .venv/bin/python -m compileall -q scripts explore tests
+      - name: Check Python and native extension syntax
+        run: |
+          .venv/bin/python -m compileall -q scripts explore tests
+          node --check cloud/native/exploreos.cjs
+          node --check explore/web/app.js
+          node --check scripts/check_native_ui.cjs
       - name: Check transaction rollback, concurrent files and bounded execution mechanics
         run: |
           node scripts/cloud/test_atomic_files.cjs

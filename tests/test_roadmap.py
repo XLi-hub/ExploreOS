@@ -365,6 +365,10 @@ tick(p,SimulatedBackend(),now=1060)
         origin = self.client.base.rsplit("/api/v1", 1)[0]
         with requests.Session() as browser:
             browser.trust_env = False
+            admin = browser.get(self.client.base + "/agents/me", headers={
+                "Authorization": "Bearer " + self.client.token, "X-Agent-Name": "admin"})
+            self.assertEqual(admin.status_code, 200)
+            self.assertTrue(admin.json()["agent"]["isGlobalAdmin"])
             page = browser.get(base + "/ui")
             self.assertEqual(page.status_code, 200)
             self.assertIn("ClawInstitute", page.text)
