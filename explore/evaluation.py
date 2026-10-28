@@ -30,6 +30,15 @@ VARIANTS.update({
 DIMENSIONS = ("question_clarity", "explanation_coverage", "counterexamples", "evidence_scope", "continuity", "useful_next_steps")
 
 
+def runtime_manifest():
+    paths = ["explore/engine.py", "explore/models.py", "explore/memory.py", "explore/reviews.py",
+             "explore/store.py", "explore/policy.py", "explore/bootstrap.py", "explore/cross_memory.py",
+             "explore/subagents.py", "explore/evaluation.py", "scripts/pi_runner.mjs", "scripts/subagents_runner.mjs",
+             "cloud/versions.json", "cloud/package-lock.json", "cloud/pi/package-lock.json", "cloud/subagents/package-lock.json"]
+    paths += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "cloud/patches").glob("*")) if p.is_file()]
+    return {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in paths}
+
+
 def identifier(value):
     if not isinstance(value, str) or re.fullmatch(r"[a-z][a-z0-9_]{0,23}", value) is None:
         raise ValueError("Use a 1–24 character lowercase identifier")
@@ -74,15 +83,21 @@ def freeze_pack(path, *, repeats=3, variants=None, seed=None):
                 "sampling": {"rule": "hash_order_of_post_ids", "maximum_findings_per_case": 5},
                 "review_dimensions": list(DIMENSIONS), "blind_order_seed": seed or secrets.token_hex(16),
                 "qualification": "Equal call ceilings are not equal actual spend; synthetic materials are not field observations. The failure-memory ablation hides execution-failure notes only."}
+    protocol["runtime_manifest"] = runtime_manifest()
+    protocol["runtime_sha256"] = digest(protocol["runtime_manifest"])
     return {"protocol": protocol, "protocol_sha256": digest(protocol)}
 
 
-def validate_frozen(frozen):
+def validate_frozen(frozen, *, require_runtime=False):
     if digest(frozen["protocol"]) != frozen.get("protocol_sha256"):
         raise ValueError("Frozen evaluation protocol was modified")
     protocol = frozen["protocol"]
-    if protocol["model"] != MODEL or protocol["max_output_tokens"] != OUTPUT_TOKENS:
+    if require_runtime and (protocol["model"] != MODEL or protocol["max_output_tokens"] != OUTPUT_TOKENS):
         raise ValueError("The frozen model/output bound differs from this runtime")
+    if require_runtime and (not protocol.get("runtime_manifest") or
+            protocol.get("runtime_sha256") != digest(runtime_manifest()) or
+            protocol["runtime_manifest"] != runtime_manifest()):
+        raise ValueError("Frozen execution code/dependencies differ or are unbound; preserve historical results and freeze a new campaign")
     for task in protocol["tasks"]:
         identifier(task["id"])
         for source in task["sources"]:
@@ -101,7 +116,7 @@ class Campaign:
     @classmethod
     def prepare(cls, client, name, frozen):
         identifier(name)
-        protocol = validate_frozen(frozen)
+        protocol = validate_frozen(frozen, require_runtime=True)
         directory = ROOT / ".research/evaluations" / name
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         with (directory / "prepare.lock").open("a") as lock:
@@ -127,7 +142,7 @@ class Campaign:
             return campaign
 
     def project(self, state, case):
-        protocol = validate_frozen(state["frozen"])
+        protocol = validate_frozen(state["frozen"], require_runtime=True)
         task = next(t for t in protocol["tasks"] if t["id"] == case["task_id"])
         variant = protocol["variants"][case["variant"]]
         directory = ROOT / ".research" / case["project_name"]
@@ -272,6 +287,8 @@ class Campaign:
         atomic_local(destination / "review-packet.json", {"protocol_sha256": state["frozen"]["protocol_sha256"], "cases": views})
         atomic_local(destination / "private-key.json", key)
         report = {"protocol_sha256": state["frozen"]["protocol_sha256"], "backend": state["backend"], "cases": cases,
+                  "frozen_runtime_sha256": protocol.get("runtime_sha256"),
+                  "current_runtime_matches_frozen": protocol.get("runtime_sha256") == digest(runtime_manifest()),
                   "case_status_counts": dict(Counter(c["status"] for c in cases)),
                   "human_reviews": list(state["reviews"].values()),
                   "repeats": protocol["repeats"], "kind": "mechanical_fixture" if state["backend"] == "simulated" else "evaluation_execution_records",

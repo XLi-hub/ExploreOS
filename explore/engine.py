@@ -391,7 +391,8 @@ class Project:
                     ("post_id", "status", "question_revision", "superseded_by", "withdrawn_by") if key in finding}
         directions = list(state["directions"].values())
         if state["mode"] != "collaborative":
-            directions = [d for d in directions if actor in d["members"]]
+            directions = [d for d in directions if actor in d["members"] or
+                          d.get("created_by") == actor or d["id"] == "direction:" + actor]
         pending = [c for c in state["changes"].values() if c["status"] == "pending"] if peers else []
         request = {"phase": phase, "actor": actor, "round": round_record["number"],
                    "question_revision": round_record["question_revision"],
@@ -436,7 +437,7 @@ class Project:
                 "summary": "下一轮私有摘要", "unresolved": "尚未核对的问题",
                 "claim_kind": "fact/inference/hypothesis/idea之一；引用原文不自动验证推断",
                 "revisit_when": "什么新材料、反例或关注点变化会使本发现需要重开，最多50字",
-                "change": "可为null；或{kind:join或reopen,target:已有方向ID,reason:材料或交流给出的变更/重开理由,influenced_by:[实际同伴帖子ID]}；reopen只针对paused方向，不必为了流程而调整"}
+                "change": "null；或{kind:join/reopen,target:已有方向ID,reason:变更理由,influenced_by:[实际同伴ID]}；或{kind:fork,target:null,title:新的暂定方向,reason:为何分叉,influenced_by:[实际同伴ID，没有则空]}。fork可依据本次材料或明确的推理设想，reopen只针对paused方向；不要求为了流程调整"}
             if request["tool_result"] is None:
                 request["contract"]["evidence"] = None
                 request["contract"]["claim_kind"] = "inference/hypothesis/idea之一；本次没有外部材料，禁止把主张标为fact"
@@ -496,11 +497,11 @@ class Project:
         peer_ids = {p["id"] for p in request["peers"]} | set(request.get("previously_read_peer_ids", [])) | set(request.get("contribution_views", {}))
         if phase not in ("propose", "consent"):
             links = output.get("influenced_by")
-            if not isinstance(links, list) or any(link not in peer_ids for link in links):
+            if not isinstance(links, list) or any(not isinstance(link, str) or link not in peer_ids for link in links):
                 raise ValueError("Influence link was not in the actually provided peer context")
         if phase in ("plan", "consent"):
             acks = output.get("acknowledge")
-            if not isinstance(acks, list):
+            if not isinstance(acks, list) or any(not isinstance(ack, str) for ack in acks):
                 raise ValueError("Acknowledgement refers to an unseen proposal")
             pending_ids = {c["id"] for c in request["pending_changes"]}
             obsolete = [ack for ack in acks if ack not in pending_ids]
@@ -515,7 +516,7 @@ class Project:
         if phase == "plan":
             reviews.selection(output, request)
             if "source_id" not in output or (output["source_id"] is not None and
-                    output["source_id"] not in {source["id"] for source in request["sources"]}):
+                    (not isinstance(output["source_id"], str) or output["source_id"] not in {source["id"] for source in request["sources"]})):
                 raise ValueError("Source outside read allowlist")
         if phase == "reflect":
             reviews.validate(output, request)
@@ -543,22 +544,53 @@ class Project:
             if change is not None:
                 if not request.get("semantic_policy", policy.DEFAULT)["direction_changes"]:
                     raise ValueError("Direction changes are disabled in this frozen configuration")
-                if (not isinstance(change, dict) or change.get("kind") not in ("join", "reopen")
-                        or change.get("target") not in {d["id"] for d in request["directions"]}
+                if (not isinstance(change, dict) or change.get("kind") not in ("join", "reopen", "fork")
                         or not isinstance(change.get("reason"), str) or not change["reason"].strip()
-                        or not isinstance(change.get("influenced_by"), list) or not change["influenced_by"]
-                        or any(link not in peer_ids for link in change["influenced_by"])):
+                        or not isinstance(change.get("influenced_by"), list)
+                        or any(not isinstance(link, str) or link not in peer_ids for link in change["influenced_by"])):
                     raise ValueError("Direction change has no valid target or peer basis")
-                target = next(d for d in request["directions"] if d["id"] == change["target"])
-                if change["kind"] == "reopen" and target["status"] != "paused":
-                    raise ValueError("Reopening requires a previously paused direction")
+                if change["kind"] == "fork":
+                    if (change.get("target") is not None or not isinstance(change.get("title"), str)
+                            or not change["title"].strip()):
+                        raise ValueError("A fork needs a new title and cannot overwrite an existing direction")
+                else:
+                    target = next((d for d in request["directions"] if d["id"] == change.get("target")), None)
+                    if target is None:
+                        raise ValueError("Direction change target was not actually supplied")
+                    own = target.get("created_by") == request["actor"] or target["id"] == "direction:" + request["actor"]
+                    if not change["influenced_by"] and not (change["kind"] == "reopen" and (own or source is not None)):
+                        raise ValueError("Joining a peer direction needs an actual peer basis")
+                    if change["kind"] == "reopen" and target["status"] != "paused":
+                        raise ValueError("Reopening requires a previously paused direction")
 
     def apply_changes(self, state):
         for proposal in state["changes"].values():
             if proposal["status"] != "pending" or not set(proposal["affected"]) <= set(proposal["acks"]):
                 continue
-            target = state["directions"][proposal["target"]]
             origin = state["directions"][proposal["origin"]]
+            if proposal["kind"] == "fork":
+                if origin["version"] != proposal["base_versions"][0] or proposal["target"] in state["directions"]:
+                    proposal["status"] = "stale"
+                    continue
+                before = json.loads(json.dumps([origin]))
+                actor = proposal["actor"]
+                origin["members"].remove(actor)
+                origin["version"] += 1
+                if not origin["members"]:
+                    origin["status"] = "paused"
+                target = {"id": proposal["target"], "title": proposal["title"], "members": [actor],
+                          "status": "active", "version": 1, "created_by": actor,
+                          "proposal_post": proposal["post_id"], "forked_from": origin["id"],
+                          "basis_kind": proposal["basis_kind"], "basis_source_id": proposal["basis_source_id"],
+                          "claim_truth_verified": False}
+                state["directions"][target["id"]] = target
+                state["agents"][actor]["direction"] = target["id"]
+                proposal["status"] = "applied"
+                state["direction_history"].append({"proposal_id": proposal["id"], "before": before,
+                    "after": json.loads(json.dumps([origin, target]))})
+                self.event(state, "direction_fork_applied", proposal_id=proposal["id"])
+                continue
+            target = state["directions"][proposal["target"]]
             if (origin["version"], target["version"]) != tuple(proposal["base_versions"]):
                 proposal["status"] = "stale"
                 continue
@@ -605,7 +637,7 @@ class Project:
             if phase == "propose" and state["agents"][actor]["direction"] is None:
                 direction_id = "direction:" + actor
                 state["directions"][direction_id] = {"id": direction_id, "title": output["direction"],
-                    "members": [actor], "version": 1, "status": "active", "proposal_post": post_id}
+                    "members": [actor], "version": 1, "status": "active", "proposal_post": post_id, "created_by": actor}
                 state["agents"][actor]["direction"] = direction_id
             if phase in ("plan", "consent"):
                 for proposal_id in output["acknowledge"]:
@@ -622,7 +654,19 @@ class Project:
             if phase == "reflect" and output.get("change"):
                 proposed = output["change"]
                 origin_id = state["agents"][actor]["direction"]
-                if proposed["target"] != origin_id:
+                if proposed["kind"] == "fork":
+                    observed = next(d for d in request["directions"] if d["id"] == origin_id)
+                    origin = state["directions"][origin_id]
+                    proposal_id = "change:" + call_id
+                    source_id = (output.get("evidence") or {}).get("source_id")
+                    state["changes"][proposal_id] = {**proposed, "id": proposal_id, "actor": actor,
+                        "origin": origin_id, "target": "direction:fork_" + hashlib.sha256(call_id.encode()).hexdigest()[:24], "post_id": post_id,
+                        "status": "pending" if origin["version"] == observed["version"] else "stale",
+                        "base_versions": [observed["version"]], "affected": sorted(observed["members"]),
+                        "acks": {actor: post_id}, "basis_source_id": source_id,
+                        "basis_kind": "material" if source_id else "peer" if proposed["influenced_by"] else "reasoning_only"}
+                    self.apply_changes(state)
+                elif proposed["target"] != origin_id:
                     origin, target = state["directions"][origin_id], state["directions"][proposed["target"]]
                     observed = {direction["id"]: direction for direction in request["directions"]}
                     observed_origin, observed_target = observed[origin_id], observed[proposed["target"]]

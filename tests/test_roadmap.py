@@ -65,6 +65,16 @@ class FrozenProtocolTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 freeze_pack(path)
 
+    def test_frozen_runtime_changes_block_new_calls_but_preserve_read_only_history(self):
+        from explore.assessments import digest
+        frozen = freeze_pack(ROOT / "examples/evaluation/pilot.json", seed="runtime-test")
+        frozen["protocol"]["runtime_manifest"]["explore/engine.py"] = "a different implementation"
+        frozen["protocol"]["runtime_sha256"] = digest(frozen["protocol"]["runtime_manifest"])
+        frozen["protocol_sha256"] = digest(frozen["protocol"])
+        validate_frozen(frozen)
+        with self.assertRaises(ValueError):
+            validate_frozen(frozen, require_runtime=True)
+
 
 class RoadmapIntegrationTests(unittest.TestCase):
     def setUp(self):

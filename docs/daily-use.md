@@ -15,6 +15,8 @@
 
 ## 明确关联另一个课题的发现
 
+同一课题内也可以产生初始集合以外的方向：参与者在检查材料或推理后选择 fork，提出新的暂定路线；原路线保留，组内分工改变需相关成员确认。自己的暂停路线可在新条件下重开。方向变化不自动验证新解释，更多路线也不等于探索更有用；依据与前后状态可从工作台展开。
+
 ~~~bash
 .venv/bin/python -m explore link-memory target_project origin_project ACTUAL_FINDING_POST_ID \
   --conditions "仅在原来的使用条件与材料范围内参考" \
