@@ -9,8 +9,9 @@ from scripts.cloud.runtime import ROOT
 from scripts.probe_native import session_budget
 from .engine import MODES, Project
 from .models import ClaudeBackend, Gateway, PiBackend, SimulatedBackend
-from .store import Client
+from .store import Client, atomic_local
 from .subagents import SubagentsBackend
+from . import assessments
 
 
 def main():
@@ -22,7 +23,7 @@ def main():
     create.add_argument("--scenario", choices=("split", "merge", "feedback"), default="split")
     create.add_argument("--question", help="Any open question; no metric or dataset required")
     create.add_argument("--source", action="append", default=[], help="Explicitly allowed UTF-8 material path; repeat for more materials")
-    for name in ("advance", "status", "pause", "resume", "cancel", "reconcile", "export", "steer", "add-source", "memory", "reviews", "executions", "extend", "challenge", "retry"):
+    for name in ("advance", "status", "pause", "resume", "cancel", "reconcile", "export", "steer", "add-source", "memory", "reviews", "executions", "extend", "challenge", "retry", "source-audit", "assess-source"):
         command = sub.add_parser(name)
         command.add_argument("name")
         if name == "advance":
@@ -42,6 +43,15 @@ def main():
         if name == "retry":
             command.add_argument("slot")
             command.add_argument("reason")
+        if name in ("source-audit", "assess-source"):
+            command.add_argument("post_id")
+        if name == "assess-source":
+            command.add_argument("--basis-sha256", required=True, help="Fingerprint from the source-audit you inspected")
+            command.add_argument("--verdict", choices=assessments.VERDICTS, required=True)
+            command.add_argument("--reason", required=True)
+            command.add_argument("--scope", required=True, help="What the cited material does and does not support")
+            command.add_argument("--reviewer", default="user", help="Self-reported attribution, not authenticated identity")
+            command.add_argument("--assessment-id", help="Stable ID to safely repeat a submission after an unknown response")
     args = parser.parse_args()
     client = Client()
     if args.command == "create":
@@ -77,6 +87,15 @@ def main():
         elif args.command == "retry":
             pool = session_budget(client) if (ROOT / ".research/session-budget.json").exists() else None
             project.retry(args.slot, args.reason, pool)
+        elif args.command == "source-audit":
+            audit = project.audit_source(args.post_id)
+            destination = project.directory / "audits" / audit["basis_sha256"]
+            atomic_local(destination / "audit.json", audit)
+            (destination / "audit.md").write_text(assessments.markdown(audit), encoding="utf-8")
+            print(json.dumps({"audit": str(destination / "audit.md"), **audit}, ensure_ascii=False, indent=2))
+        elif args.command == "assess-source":
+            print("Recorded source assessment:", project.assess_source(args.post_id, args.basis_sha256,
+                args.verdict, args.reason, args.reviewer, args.scope, args.assessment_id))
         elif args.command == "memory":
             from .memory import Memory
             state, _ = project.file.read()
@@ -86,6 +105,7 @@ def main():
             state, _ = project.file.read()
             print(json.dumps({"findings": list(state.get("knowledge", {}).values()),
                               "reviews": state.get("reviews", []),
+                              "source_assessments": list(state.get("source_assessments", {}).values()),
                               "qualification": "Author responses preserve objections; no claim has been automatically verified"},
                              ensure_ascii=False, indent=2))
         elif args.command == "executions":

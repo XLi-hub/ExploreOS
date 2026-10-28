@@ -12,10 +12,10 @@ import uuid
 from scripts.cloud.runtime import ROOT
 from .bootstrap import launch
 from .memory import Memory, select_shared_memory
-from . import reviews
+from . import assessments, reviews
 from .subagents import read_receipt, terminal as plugin_terminal
 from .models import REAL_BACKENDS, parse_json_output
-from .store import JsonFile, atomic_local
+from .store import Conflict, JsonFile, atomic_local
 
 MODES = ("single", "multiple_perspectives", "independent", "collaborative")
 PERSPECTIVES = ["澄清假设、竞争解释与缺失材料；可以自行更换视角",
@@ -105,6 +105,7 @@ class Project:
                 "rounds": state["rounds"], "calls": {key: value["status"] for key, value in state["calls"].items()},
                 "directions": state["directions"], "changes": state["changes"],
                 "review_count": len(state.get("reviews", [])),
+                "source_assessment_summary": assessments.summary(state),
                 "unanswered_challenges": sum(not c.get("author_responses") for k in state.get("knowledge", {}).values()
                                              for c in k.get("challenges", []))}
 
@@ -230,6 +231,61 @@ class Project:
             raise RuntimeError("Material changed after its project snapshot")
         return source
 
+    def audit_source(self, post_id):
+        state, _ = self.file.read()
+        if not any(p["id"] == post_id and p["phase"] == "reflect" for p in state["posts"]):
+            raise ValueError("Choose a finding in this project")
+        content = json.loads(self.client.request("GET", f"/posts/{post_id}")["content"])
+        evidence = content.get("evidence")
+        source = self.read_source(evidence["source_id"]) if evidence else None
+        return assessments.packet(state, post_id, content, source)
+
+    def assess_source(self, post_id, basis_sha256, verdict, reason, reviewer, scope, assessment_id=None):
+        assessment_id = assessment_id or uuid.uuid4().hex
+        if (not isinstance(assessment_id, str) or not 1 <= len(assessment_id) <= 64
+                or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in assessment_id)):
+            raise ValueError("Assessment ID must be 1–64 letters, digits, underscores or hyphens")
+        if any(not isinstance(value, str) for value in (reason, reviewer, scope)):
+            raise ValueError("Assessment reason, reviewer and scope must be text")
+        supplied = dict(target_post=post_id, basis_sha256=basis_sha256, verdict=verdict,
+                        reason=reason.strip(), reviewer=reviewer.strip(), scope=scope.strip())
+        def existing(state):
+            old = state.get("source_assessments", {}).get(assessment_id)
+            if old is not None and any(old[k] != v for k, v in supplied.items()):
+                raise Conflict("Assessment ID already belongs to a different judgment")
+            return old
+        state, _ = self.file.read()
+        if existing(state) is not None:
+            return assessment_id
+        audit = self.audit_source(post_id)
+        if audit["basis_sha256"] != basis_sha256:
+            raise Conflict("Audit basis changed; inspect a fresh source-audit before assessing")
+        record = assessments.judgment(audit, verdict, reason, reviewer, scope)
+        basis_path = f"exploration/source-audits/{basis_sha256}.json"
+        archived = {"kind": "source_audit_basis_v1", "basis": audit["basis"], "basis_sha256": basis_sha256}
+        endpoint = f"/workspaces/{self.file.workspace}/files/{basis_path}"
+        try:
+            self.client.request("PUT", endpoint, {"content": json.dumps(archived, ensure_ascii=False)}, version=0)
+        except Conflict:
+            if json.loads(self.client.request("GET", endpoint)["content"]) != archived:
+                raise Conflict("Stored audit basis differs from its fingerprint")
+        record.update(id=assessment_id, basis_path=basis_path, created_ns=time.time_ns())
+        def change(state):
+            if existing(state) is not None:
+                return assessment_id
+            current = assessments.packet(state, post_id, audit["basis"]["content"], audit["basis"]["source"])
+            if current["basis_sha256"] != basis_sha256:
+                raise Conflict("Question or feedback changed during assessment; inspect a fresh source-audit")
+            records = state.setdefault("source_assessments", {})
+            finding = state["knowledge"][post_id]
+            finding["review_version"] = finding.get("review_version", 0) + 1
+            records[assessment_id] = {**record, "sequence": len(records) + 1,
+                                      "resulting_review_version": finding["review_version"]}
+            self.event(state, "source_support_assessed", assessment_id=assessment_id, target_post=post_id,
+                       verdict=verdict, reviewer=reviewer)
+            return assessment_id
+        return self.file.update("source-assessment:" + assessment_id + ":" + assessments.digest(supplied), change)
+
     def request_for(self, state, actor, phase, round_record):
         review_context = None
         if phase == "reflect":
@@ -313,7 +369,7 @@ class Project:
                                                if review_context else "null；本次未在plan选择复查，不能改写旧发现")
             request["contract"]["critique"] = ("null，或{target_post:本次peers或shared_memory中他人的发现ID,reason:具体质疑}；仅有索引时只能指出待查问题，不能声称读过全文；质疑不自动推翻主张"
                                                  if request["peer_critique_enabled"] else "null；本配置不提供同伴质疑通道")
-        request["instructions"] = "严格输出JSON对象，键与contract一致，每个文字字段最多100字。视角提示可自行拒绝或修订，不是固定研究分工。不得编造来源或同伴ID，不用多数同意代替证据。方向与分工由你根据证据判断，程序不要求必定改向。"
+        request["instructions"] = "严格输出JSON对象，键与contract一致，每个文字字段最多100字。视角提示可自行拒绝或修订，不是固定研究分工。不得编造来源或同伴ID，不用多数同意代替证据。方向与分工由你根据证据判断，程序不要求必定改向。source_assessments为署名的来源支持判断，不是新证据或事实认证；检查其范围、问题版本及分歧。"
         omitted = {"peers": 0, "shared_memory": 0, "private_notes": 0, "review_candidates": 0,
                    "review_challenges": 0}
         request["context_omissions"] = omitted
@@ -764,6 +820,23 @@ class Project:
                     "execution_observations": self.execution_status(),
                     "sources": [self.read_source(source_id) for source_id in state["sources"]],
                     "kind": kind}
+        snapshot["source_assessment_summary"] = assessments.summary(state)
+        sources = {source["id"]: source for source in snapshot["sources"]}
+        snapshot["source_audits"] = []
+        for item in posts:
+            if item["phase"] == "reflect":
+                content = json.loads(item["post"]["content"])
+                source = sources.get((content.get("evidence") or {}).get("source_id"))
+                snapshot["source_audits"].append(assessments.packet(state, item["id"], content, source))
+        snapshot["source_assessment_bases"] = {}
+        for entry in state.get("source_assessments", {}).values():
+            fingerprint = entry["basis_sha256"]
+            if fingerprint not in snapshot["source_assessment_bases"]:
+                archived = json.loads(self.client.request("GET",
+                    f"/workspaces/{self.file.workspace}/files/{entry['basis_path']}")["content"])
+                if archived.get("basis_sha256") != fingerprint or assessments.digest(archived["basis"]) != fingerprint:
+                    raise RuntimeError("Archived audit basis differs from its fingerprint")
+                snapshot["source_assessment_bases"][fingerprint] = archived
         atomic_local(destination / "export.json", snapshot)
         lines = [f"# {state['name']} 阶段简报", "", f"模式：{state['mode']}；状态：{state['status']}；轮数：{len(state['rounds'])}",
                  "", f"记录性质：{snapshot['kind']}；模拟运行不验证探索质量。", "", "## 问题版本", ""]
@@ -799,6 +872,14 @@ class Project:
                           f"  - 取回的原笔记：{review['recalled_note_ids']}；实际材料：{(review.get('evidence') or {}).get('source_id', '无外部材料')}"])
         unanswered = sum(not c.get("author_responses") for k in state.get("knowledge", {}).values() for c in k.get("challenges", []))
         lines.append(f"尚无当前版本作者回应的质疑：{unanswered}。有回应也不等于异议已解决；修订后的主张仍待核查，过期复查不改变旧认识状态。")
+        counts = snapshot["source_assessment_summary"]
+        lines.extend(["", "## 来源支持核查", "",
+                      f"已核查发现：{counts['assessed_finding_count']}/{counts['finding_count']}；其中全部材料型发现：{counts['material_based_finding_count']}；核查记录：{counts['assessment_count']}。",
+                      "分母包含全部历史发现；同一发现可有重复核查和不同判断，不计算正确率。核查署名由提交者提供，未经身份认证。", ""])
+        for assessment in state.get("source_assessments", {}).values():
+            lines.extend([f"- {assessment['target_post']}；{assessment['reviewer']}：{assessment['verdict']}（问题 v{assessment['question_revision']}）",
+                          f"  - 范围：{assessment['scope']}；理由：{assessment['reason']}；记录：{assessment['id']}",
+                          f"  - 核查依据：{assessment['basis_sha256']}；判断不自动验证主张或消除异议。"])
         lines.extend(["", "## 运行与变更", "", f"已完成调用：{sum(c['status']=='completed' for c in state['calls'].values())}/{len(state['calls'])}",
                       f"已应用方向/成员变更：{len(state['direction_history'])}；待确认：{sum(c['status']=='pending' for c in state['changes'].values())}；过期未生效：{sum(c['status']=='stale' for c in state['changes'].values())}",
                       f"保留的历史失败尝试：{len(state.get('retired_calls',{}))}；重试仍计入调用限额与费用预留。",

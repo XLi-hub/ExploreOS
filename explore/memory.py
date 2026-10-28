@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 
+from . import assessments
 from .store import atomic_local
 
 
@@ -21,12 +22,13 @@ def select_shared_memory(state, actor, phase, question, revision, limit=8):
                if (state["mode"] == "collaborative" and phase != "propose") or entry["actor"] == actor]
     query = terms(question)
     ranked = sorted(enumerate(visible), key=lambda item: (
-        10 * (item[1].get("status") == "contested") +
+        10 * (item[1].get("status") == "contested" or assessments.needs_attention(state, item[1])) +
         len(query & terms(item[1].get("preview", "") + " " + item[1].get("unresolved", "") + " " + item[1].get("revisit_when", ""))),
         item[0]), reverse=True)
     selected = list(range(max(0, len(visible) - 2), len(visible)))
     selected += [i for i, _ in ranked if i not in selected][:max(0, limit - len(selected))]
-    return [{**visible[i], "applicability_check_required": visible[i]["question_revision"] != revision}
+    return [{**visible[i], "source_assessments": assessments.view(state, visible[i]),
+             "applicability_check_required": visible[i]["question_revision"] != revision}
             for i in selected]
 
 
