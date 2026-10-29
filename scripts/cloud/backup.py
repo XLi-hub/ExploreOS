@@ -61,7 +61,12 @@ def offline(root):
     no_links(root, ".runtime/service")
     service = root / ".runtime/service"
     service.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with (service / "manager.lock").open("a") as lock:
+    with (service / "supervisor.lock").open("a") as supervisor, (service / "manager.lock").open("a") as lock:
+        # Shared file locking works even when another container has its own PID namespace.
+        try:
+            fcntl.flock(supervisor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError("Stop the product supervisor before snapshot or restore") from None
         fcntl.flock(lock, fcntl.LOCK_EX)
         record = service / "process.json"
         if record.exists() and alive(int(json.loads(record.read_text())["pid"])):
@@ -249,21 +254,48 @@ def restore(root, archive):
         targets = [root / name for name in (*TREES, *EXTRAS)]
         for name in (*TREES, *EXTRAS):
             no_links(root, name)
-        if any(path.exists() for path in targets):
+        empty_roots = {path for path in targets if path.exists() and path.relative_to(root).as_posix() in TREES
+                       and path.is_dir() and not any(path.iterdir())}
+        if any(path.exists() and path not in empty_roots for path in targets):
             raise FileExistsError("Restore requires empty target data; existing research, DB, tokens and readiness records are never replaced")
         stage = root / ".runtime" / ("restore-" + uuid.uuid4().hex)
         stage.mkdir(mode=0o700)
-        moved, rollback_failed = [], False
+        moved, prepared, rollback_failed = [], [], False
         try:
             scan(archive, stage, manifest)
             for target in targets:
                 source = stage / target.relative_to(root)
                 if source.exists():
-                    if target.exists() or target.is_symlink():
+                    if target.is_symlink() or (target.exists() and target not in empty_roots):
                         raise FileExistsError("Target data appeared during restore")
-                    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                    os.rename(source, target)
-                    moved.append((source, target))
+                    # Prepare on the destination filesystem. A Docker volume may
+                    # differ from both the checkout and other data volumes.
+                    parent = target if target in empty_roots else target.parent
+                    parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                    if target in empty_roots:
+                        if any(target.iterdir()):
+                            raise FileExistsError("Target data appeared during restore")
+                        target.chmod(0o700)
+                    ready = parent / (".restore-" + uuid.uuid4().hex)
+                    prepared.append(ready)
+                    if source.is_dir():
+                        shutil.copytree(source, ready)
+                    else:
+                        shutil.copy2(source, ready)
+                    if target in empty_roots:
+                        if set(target.iterdir()) != {ready}:
+                            raise FileExistsError("Target data appeared during restore")
+                        for child in sorted(ready.iterdir()):
+                            destination = target / child.name
+                            if destination.exists() or destination.is_symlink():
+                                raise FileExistsError("Target data appeared during restore")
+                            os.rename(child, destination)
+                            moved.append((child, destination))
+                    else:
+                        if target.exists() or target.is_symlink():
+                            raise FileExistsError("Target data appeared during restore")
+                        os.rename(ready, target)
+                        moved.append((ready, target))
         except BaseException:
             for source, target in reversed(moved):
                 try:
@@ -272,10 +304,15 @@ def restore(root, archive):
                 except OSError:
                     rollback_failed = True
             if rollback_failed:
-                raise RuntimeError("Restore rollback could not finish; preserve the private restore staging directory for manual recovery")
+                raise RuntimeError("Restore rollback could not finish; preserve private .restore-* and restore-* staging directories for manual recovery")
             raise
         finally:
             if not rollback_failed:
+                for ready in prepared:
+                    if ready.is_dir():
+                        shutil.rmtree(ready)
+                    else:
+                        ready.unlink(missing_ok=True)
                 shutil.rmtree(stage)
     return {"restored": True, "entries": len(manifest["records"]), "git_commit": manifest["git_commit"],
             "model_requests": 0, "service_started": False}

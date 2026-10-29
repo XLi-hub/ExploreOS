@@ -188,12 +188,14 @@ def start() -> None:
         raise RuntimeError("Service not ready after 60 seconds; inspect private logs, then run stop.")
 
 
-def stop() -> None:
+def stop(*, expected_record=None) -> None:
     with manager_lock():
         if not RECORD.exists():
             print("No managed service record.")
             return
         record = json.loads(RECORD.read_text())
+        if expected_record is not None and record != expected_record:
+            raise RuntimeError("Service ownership changed; refusing to stop its replacement.")
         pid = int(record["pid"])
         if alive(pid):
             if not owned(record):

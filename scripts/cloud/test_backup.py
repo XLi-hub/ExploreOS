@@ -176,7 +176,7 @@ class BackupTests(unittest.TestCase):
         backup.create(self.source, self.archive)
         original = os.rename
         def fail_second(source, destination):
-            if Path(source).name == "db":
+            if Path(destination).name == "db":
                 raise OSError("Injected second data-tree installation failure")
             return original(source, destination)
         with patch.object(os, "rename", fail_second):
@@ -186,6 +186,31 @@ class BackupTests(unittest.TestCase):
         self.assertFalse((self.target / ".runtime/service/db").exists())
         backup.restore(self.target, self.archive)
         self.assertEqual((self.target / ".research/p/note.md").read_text(), "original scope\n")
+
+    def test_empty_data_mount_roots_keep_identity_and_roll_back_without_overwriting(self):
+        backup.create(self.source, self.archive)
+        research = self.target / ".research"
+        database = self.target / ".runtime/service/db"
+        for folder in (research, database):
+            folder.mkdir(parents=True)
+        inodes = [folder.stat().st_ino for folder in (research, database)]
+        original = os.rename
+        def fail_token(source, destination):
+            if Path(destination).name == "token":
+                raise OSError("Injected failure after installing into both mounted data roots")
+            return original(source, destination)
+        with patch.object(os, "rename", fail_token):
+            with self.assertRaises(OSError):
+                backup.restore(self.target, self.archive)
+        self.assertEqual([folder.stat().st_ino for folder in (research, database)], inodes)
+        self.assertTrue(all(not list(folder.iterdir()) for folder in (research, database)))
+        self.assertEqual(list(self.target.rglob(".restore-*")), [])
+        backup.restore(self.target, self.archive)
+        self.assertEqual([folder.stat().st_ino for folder in (research, database)], inodes)
+        self.assertEqual((research / "p/note.md").read_text(), "original scope\n")
+        self.assertEqual((database / "PG_VERSION").read_text(), "17")
+        with self.assertRaises(FileExistsError):
+            backup.restore(self.target, self.archive)
 
 
 if __name__ == "__main__":

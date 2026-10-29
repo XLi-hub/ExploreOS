@@ -54,6 +54,8 @@
 
 ## Current next step
 
+PR #8 merged the question-first native experience and attributed stage brief at 6e1d1619f5504ca6c34233f5e8235ca1ca69442a. Read docs/product-delivery.md and docs/deployment.md when changing daily product flows or packaging. Container health is service/frontend readiness, never proof of supplier access or exploration quality. Preserve named volumes and keep research execution explicit after restart.
+
 The user explicitly authorizes timely merges after appropriate checks; do not keep completed work only in a PR. PR #6 was merged into main at 21e2b6c99162472ac6d36b11f7b4bbffcfd4fd17. Continue new work on codex/ task branches, keep quality/long-term acceptance honest, and merge reviewed green increments without asking again.
 
 ADR 0014 adds private cold backups of the existing PGlite/project data and isolated restore verification. Do not reset restored budget history or include standalone model-secret configuration/logs/dependencies. Backups require stopped services/controllers; restore only into empty data and never enables paid execution automatically. See docs/backup-restore.md.
