@@ -46,6 +46,7 @@ class NativeControlTests(unittest.TestCase):
         finding = next(p for p in self.service.state(origin)["posts"] if p["phase"] == "reflect")
         for action, data in (("add-source", {"title": "not frozen", "text": "new semantic input"}),
                              ("extend", {"rounds": 1}),
+                             ("configure-execution", {"backend": "simulated"}),
                              ("link-memory", {"origin_name": origin.directory.name, "post_id": finding["id"],
                                               "conditions": "limited", "reason": "new input"})):
             with self.assertRaises(ValueError):

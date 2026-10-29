@@ -1,6 +1,8 @@
 """JSON controller bridge hosted by ClawInstitute's authenticated API."""
 import json
+import math
 import os
+from pathlib import Path
 import re
 import sys
 import uuid
@@ -10,7 +12,7 @@ from .credentials import model_key
 from scripts.cloud.runtime import ROOT
 from .engine import Project
 from .models import SimulatedBackend
-from .store import Client
+from .store import Budget, Client, JsonFile
 
 MAX_CONTROL_BYTES = 96000  # Fits a 12 KB source even when JSON escapes each byte.
 
@@ -23,6 +25,70 @@ class NativeService:
             raise ValueError("Unknown project name")
         return Project(self.client, ROOT / ".research" / name)
 
+    def budget_view(self):
+        reference = ROOT / ".research/session-budget.json"
+        if not reference.exists():
+            return None
+        workspace = json.loads(reference.read_text())["workspace_id"]
+        state, _ = JsonFile(self.client, workspace, "execution/session-budget.json").read()
+        exposure = Budget.exposure(state)
+        return {"limit_cny": state["limit_cny"], "exposure_cny": exposure,
+                "remaining_cny": max(0, state["limit_cny"] - exposure),
+                "requests": len(state["requests"]), "max_calls": state["max_calls"],
+                "unknown_requests": sum(r["state"] == "unknown" for r in state["requests"].values())}
+
+    def runtime(self):
+        """Passive setup information only; never creates a pool or contacts a model."""
+        from .models import PI_VERSION
+        try:
+            credential = "configured" if model_key() else "missing"
+        except (OSError, RuntimeError):
+            credential = "invalid"
+        pi_ready = True
+        for name in ("pi-agent-core", "pi-ai"):
+            path = ROOT / ".runtime/pi/node_modules/@earendil-works" / name / "package.json"
+            try:
+                pi_ready = pi_ready and json.loads(path.read_text())["version"] == PI_VERSION
+            except (OSError, ValueError, KeyError):
+                pi_ready = False
+        policy = "unknown"
+        try:
+            snapshot = json.loads(Path("/etc/codex/network-policy.json").read_text())
+            network = snapshot.get("http_network_policy", {})
+            if (snapshot.get("version") == 1 and network.get("type") == "restricted"
+                    and not any(r.get("host") == "api.deepseek.com" for r in network.get("egress_rules", []))):
+                policy = "not_allowed_at_startup"
+        except (OSError, ValueError):
+            pass
+        return {"credential": credential, "pi_ready": pi_ready, "budget": self.budget_view(),
+                "network": policy, "model": "DeepSeek", "network_checked": False}
+
+    def validate_profile(self, data):
+        if not isinstance(data, dict) or data.get("backend") not in ("simulated", "pi", "pi-subagents", "claude"):
+            raise ValueError("Choose a supported exploration mode")
+        profile = {"backend": data["backend"]}
+        if data["backend"] != "simulated":
+            budget = self.budget_view()
+            limit = data.get("budget_cny", budget["limit_cny"] if budget else None)
+            if isinstance(limit, bool) or not isinstance(limit, (float, int)) or not math.isfinite(limit) or limit <= 0:
+                raise ValueError("Set a positive shared model budget before real exploration")
+            if budget and limit != budget["limit_cny"]:
+                raise ValueError("The existing shared model budget cannot be reset or increased here")
+            profile["budget_cny"] = limit
+        return profile
+
+    def save_profile(self, project, data):
+        profile = self.validate_profile(data)
+        def save(state):
+            project.assert_input_change_allowed(state)
+            attempts = [*state["calls"].values(), *state.get("retired_calls", {}).values()]
+            if any(call["backend"] != profile["backend"] for call in attempts):
+                raise ValueError("This project already has another execution mode; create a new project to keep results separate")
+            state["native_execution"] = profile
+            project.event(state, "native_execution_configured", backend=profile["backend"])
+        project.file.update("native-profile:" + uuid.uuid4().hex, save)
+        return profile
+
     def projects(self):
         def read(metadata):
             try:
@@ -31,13 +97,15 @@ class NativeService:
                 if state.get("evaluation_binding"):
                     return None
                 return {"name": state["name"], "status": state["status"], "mode": state["mode"],
-                        "question": state["question_revisions"][-1]["text"], "rounds": len(state["rounds"])}
+                        "question": state["question_revisions"][-1]["text"], "rounds": len(state["rounds"]),
+                        "last_activity_ns": (state["events"][-1]["time_ns"] if state["events"] else metadata.stat().st_mtime_ns)}
             except (OSError, RuntimeError, ValueError):
                 return {"name": metadata.parent.name, "status": "unavailable", "question": "项目记录暂不可读"}
         # Each response is still read from ClawInstitute, with bounded read concurrency.
         with ThreadPoolExecutor(max_workers=8) as readers:
             result = readers.map(read, sorted((ROOT / ".research").glob("*/run_metadata.json")))
-            return {"projects": [entry for entry in result if entry is not None]}
+            return {"projects": sorted((entry for entry in result if entry is not None),
+                                       key=lambda entry: entry.get("last_activity_ns", 0), reverse=True)}
 
     def state(self, project):
         state, version = project.file.read()
@@ -47,6 +115,7 @@ class NativeService:
             "changes", "direction_history", "knowledge", "reviews", "source_assessments", "rounds", "schedule",
             "schedule_notifications", "cross_project_memory", "last_errors", "continuation_required",
             "max_rounds", "max_concurrency", "evaluation_binding")}
+        result["native_execution"] = state.get("native_execution")
         result.update(version=version, posts=[{**entry, "content": json.loads(self.client.request(
             "GET", "/posts/" + entry["id"])["content"])} for entry in state["posts"]],
             calls=[{"slot": slot, **{key: call.get(key) for key in fields}}
@@ -63,6 +132,8 @@ class NativeService:
                 else "incomplete_execution_case"))
         from .cross_memory import recall
         result["linked_memory_observations"] = recall(self.client, state)
+        from .brief import build
+        result["brief"] = build(result)
         return result
 
     def add_source(self, project, data):
@@ -80,6 +151,10 @@ class NativeService:
         return project.add_source(destination, title.strip())
 
     def advance(self, project, data):
+        saved = project.file.read()[0].get("native_execution") or {}
+        if saved and data.get("backend", saved["backend"]) != saved["backend"]:
+            raise ValueError("Execution differs from this project's saved exploration settings")
+        data = {**saved, **data}
         backend = data.get("backend", "simulated")
         if backend not in ("simulated", "pi", "pi-subagents", "claude"):
             raise ValueError("Unknown execution backend")
@@ -117,16 +192,24 @@ class NativeService:
             raise ValueError("Control parameters must be an object")
         if action == "projects":
             return self.projects()
+        if action == "runtime":
+            return self.runtime()
         if action == "create":
             question = data.get("question", "")
             if not isinstance(question, str) or not 1 <= len(question.strip()) <= 3000:
                 raise ValueError("Enter a question of 1–3000 characters")
-            project = Project.create(self.client, data["name"], question=question, mode=data.get("mode", "collaborative"),
+            profile = self.validate_profile(data["execution"]) if "execution" in data else None
+            name = data.get("name") or "q_" + uuid.uuid4().hex[:16]
+            project = Project.create(self.client, name, question=question, mode=data.get("mode", "collaborative"),
                                      participants=data.get("participants", 3), max_concurrency=data.get("concurrency", 2))
+            if profile:
+                self.save_profile(project, profile)
             return project.status()
         project = self.project(request.get("name"))
         if action == "state":
             return self.state(project)
+        if action == "brief":
+            return self.state(project)["brief"]
         if action == "export":
             return project.export(project.directory / "exports")
         if action == "audit":
@@ -156,6 +239,8 @@ class NativeService:
             project.extend(data.get("rounds", 1))
         elif action == "advance":
             return self.advance(project, data)
+        elif action == "configure-execution":
+            self.save_profile(project, data)
         else:
             raise ValueError("Unknown native action")
         return project.status()
