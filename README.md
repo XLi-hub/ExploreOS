@@ -14,6 +14,8 @@ ExploreOS 关注问题如何越探越清楚、失败如何被后来者利用、�
 
 也可从 [产品容器检查](https://github.com/XLi-hub/ExploreOS/actions/workflows/product-container.yml) 的成功运行下载预构建安装包，按内附 README 校验、加载镜像并启动。
 
+正式 Release 尚未发布：真实质量、重复评测与长期部署仍待完成。发布草稿、验收条件及安装包永久附件流程见 [发布说明](docs/releasing.md)；开发 CI 全绿不能单独授权正式发布。
+
 云端配置从 **[CLOUD.md](CLOUD.md)** 开始：Python 3.11、Node 22、固定 AutoScientists 与 ClawInstitute 版本、安装入口和真实 API 检查。后续开发完全通过 GitHub 与云端进行。
 
 安装并启动服务后，运行 `.venv/bin/python -m explore.workbench`，在运行机器打开 `http://127.0.0.1:3001/api/v1/exploreos/ui`，沿用 ClawInstitute 原登录。浏览器可以创建、导入材料、推进与追加有限轮次、改向/暂停、核对失败、关联其他课题发现和导出。真实模型执行需另行配置凭据与明确预算；默认仍是零付费机械演示。

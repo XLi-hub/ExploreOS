@@ -42,6 +42,8 @@
 
 ## Validation and delivery
 
+- Before declaring delivery, verify both workflows for the merged main commit have completed successfully and its product artifact exists; report the actual run links. Historical red runs remain history and do not prove current main failed.
+- The user requested a formal release only after the product is complete. See docs/releasing.md and .release/acceptance.json. Do not create/push release tags or publish while real quality review, repeated evaluation or persistent deployment remains pending; do not turn evidence placeholders into acceptance. The tag-triggered release workflow must reuse the exact successful main artifact and preserve source/checksum binding.
 - Documentation-only changes need syntax, link and diff checks, not fabricated runtime tests.
 - Simulated agents test mechanics. Real multi-agent exploration needs separate contexts, real models and actual tool/material evaluation.
 - Relevant runtime changes must cover concurrent claims, stale writes, restart, duplicate results, cancellation, timeout and budget reservation.

@@ -14,6 +14,9 @@ on:
       - 'examples/feedback/**'
       - 'examples/evaluation/**'
       - '.github/workflows/cloud-bootstrap.yml'
+      - '.github/workflows/release.yml'
+      - '.release/**'
+      - 'docs/releases/**'
   pull_request:
     paths:
       - 'cloud/**'
@@ -27,6 +30,9 @@ on:
       - 'examples/feedback/**'
       - 'examples/evaluation/**'
       - '.github/workflows/cloud-bootstrap.yml'
+      - '.github/workflows/release.yml'
+      - '.release/**'
+      - 'docs/releases/**'
 permissions:
   contents: read
 jobs:
