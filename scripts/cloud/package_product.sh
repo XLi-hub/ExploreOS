@@ -7,7 +7,7 @@ cd "$PROJECT_ROOT"
 git diff --quiet
 git diff --cached --quiet
 REVISION="$(git rev-parse HEAD)"
-IMAGE="${EXPLOREOS_PACKAGE_IMAGE:-exploreos:local}"
+IMAGE="exploreos:local"
 IMAGE_REVISION="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMAGE")"
 if [ "$IMAGE_REVISION" != "$REVISION" ]; then
   echo 'Build this exact revision with --build-arg VCS_REF before packaging.' >&2
