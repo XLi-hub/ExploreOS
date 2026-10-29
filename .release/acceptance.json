@@ -1,0 +1,21 @@
+{
+  "version": "v0.1.0",
+  "runtime_sha256": "5acd699103e649a4b3ea22b31d01a89cf197540e5f9c044df8de52e5c7313671",
+  "acceptance": {
+    "m1_quality_review": {
+      "status": "pending",
+      "evidence": "",
+      "blocker": "Current cloud policy does not allow api.deepseek.com; current-runtime real quality review remains pending."
+    },
+    "m2_repeated_evaluation": {
+      "status": "pending",
+      "evidence": "",
+      "blocker": "The frozen repeated real-model campaign and attributed review results have not been completed."
+    },
+    "persistent_deployment": {
+      "status": "pending",
+      "evidence": "",
+      "blocker": "A long-term target host and offsite backup destination have not been configured and verified."
+    }
+  }
+}

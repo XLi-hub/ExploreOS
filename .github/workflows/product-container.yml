@@ -2,9 +2,9 @@ name: ExploreOS product container
 on:
   push:
     branches: [main, 'codex/**']
-    paths: ['Dockerfile', '.dockerignore', 'compose.yaml', 'scripts/**', 'explore/**', 'cloud/**', 'examples/**', '.github/workflows/product-container.yml']
+    paths: ['Dockerfile', '.dockerignore', 'compose.yaml', 'scripts/**', 'explore/**', 'cloud/**', 'examples/**', '.github/workflows/product-container.yml', '.github/workflows/release.yml', '.release/**', 'docs/releases/**']
   pull_request:
-    paths: ['Dockerfile', '.dockerignore', 'compose.yaml', 'scripts/**', 'explore/**', 'cloud/**', 'examples/**', '.github/workflows/product-container.yml']
+    paths: ['Dockerfile', '.dockerignore', 'compose.yaml', 'scripts/**', 'explore/**', 'cloud/**', 'examples/**', '.github/workflows/product-container.yml', '.github/workflows/release.yml', '.release/**', 'docs/releases/**']
 permissions:
   contents: read
 jobs:
