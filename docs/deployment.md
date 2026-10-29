@@ -25,7 +25,7 @@ docker compose exec -T exploreos cat .runtime/service/home/token
 
 这是协作服务的本地登录令牌，模型密钥单独放在 `.env`，不填入登录页。登录后，新建探索、填写问题、选择真实或演示、按需添加材料，再推进一轮。阶段成果支持来源追溯、改向、简报下载与接续。
 
-端口只发布到主机 loopback。部署在自己的服务器时，可通过 SSH 保持同样的私有访问入口：
+容器内前端监听容器网卡，Compose 仅将端口发布到主机 loopback；源码安装默认仍只监听本机。部署在自己的服务器时，可通过 SSH 保持同样的私有访问入口：
 
 ~~~bash
 ssh -N -L 3001:127.0.0.1:3001 YOUR_USER@YOUR_SERVER

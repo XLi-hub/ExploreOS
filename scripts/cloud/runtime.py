@@ -133,6 +133,9 @@ def start() -> None:
         if port == frontend_port:
             raise RuntimeError("API and frontend require different ports.")
         frontend_enabled = os.environ.get("EXPLORE_FRONTEND", "1") != "0"
+        frontend_hostname = os.environ.get("EXPLORE_FRONTEND_HOSTNAME", "127.0.0.1")
+        if frontend_hostname not in ("127.0.0.1", "0.0.0.0"):
+            raise RuntimeError("Choose loopback for source installs or 0.0.0.0 behind private container port publication")
         if frontend_enabled and port != 3000:
             raise RuntimeError("The pinned native UI rewrites to API port 3000; use that port or set EXPLORE_FRONTEND=0 for API-only tasks")
         with socket.socket() as probe:
@@ -152,7 +155,7 @@ def start() -> None:
             "CLAWINSTITUTE_CHECKPOINT_MS": "1000",
             "CLAWINSTITUTE_SKIP_FRONTEND": "0" if frontend_enabled else "1",
             "CLAWINSTITUTE_FRONTEND_PORT": str(frontend_port),
-            "CLAWINSTITUTE_FRONTEND_HOSTNAME": "127.0.0.1",
+            "CLAWINSTITUTE_FRONTEND_HOSTNAME": frontend_hostname,
             "EXPLOREOS_EXTENSION_PATH": str(ROOT / "cloud/native/exploreos.cjs"),
             "EXPLOREOS_ROOT": str(ROOT),
             "EXPLOREOS_PYTHON": str(ROOT / ".venv/bin/python"),

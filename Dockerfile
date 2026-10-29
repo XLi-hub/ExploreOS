@@ -37,7 +37,7 @@ ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="ExploreOS" \
       org.opencontainers.image.source="https://github.com/XLi-hub/ExploreOS" \
       org.opencontainers.image.revision=$VCS_REF
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 EXPLORE_FRONTEND_HOSTNAME=0.0.0.0
 EXPOSE 3001
 STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=30s --timeout=15s --start-period=90s --retries=3 \
