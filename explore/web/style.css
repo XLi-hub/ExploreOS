@@ -7,3 +7,9 @@
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:18px}dialog{max-height:90vh;overflow-y:auto}#source-error,#memory-error{color:#a15031;white-space:pre-wrap}.inline-controls{margin-bottom:16px}.empty-state{padding:24px 0;color:#72818a}
 
 #memory-preview{white-space:pre-wrap;overflow-wrap:anywhere}dialog select{max-width:100%;min-width:0}
+
+[hidden]{display:none!important}.home-link{color:#c2d4d6;font-size:12px;margin:0 0 8px;text-decoration:none}.home-link:hover{text-decoration:underline}
+.brief-item{border-top:1px solid #e6ebe4;padding:20px 0}.brief-item:first-of-type{border-top:0}.brief-item h3{line-height:1.8;font-weight:550;overflow-wrap:anywhere}.brief-item button{margin-top:5px}
+.project-controls{margin:18px 0 0}.project-controls .actions{padding:14px 0 0}.runtime-hint{white-space:pre-wrap;border-left:3px solid #b9cfbd;padding-left:12px}
+#create-error,#execution-error,#control-error{color:#a15031;white-space:pre-wrap}#progress{white-space:pre-wrap}#empty button{margin:15px 0}#content>article>button{margin:5px 8px 5px 0}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #619b7d;outline-offset:3px}.question h2{overflow-wrap:anywhere}aside a:focus-visible{outline-color:#c4dcb6}#content h3{overflow-wrap:anywhere}

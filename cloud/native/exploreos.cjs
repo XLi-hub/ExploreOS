@@ -12,7 +12,7 @@ function install(app) {
   const express=require(require.resolve('express',{paths:[packageRoot]}));
   const {requireAuth}=require(path.join(packageRoot,'src/middleware/auth.js'));
   const api=express.Router(),active=new Map();
-  const allowed=new Set(['pause','resume','cancel','steer','challenge','assess','reconcile','retry','extend','advance','add-source','link-memory']);
+  const allowed=new Set(['pause','resume','cancel','steer','challenge','assess','reconcile','retry','extend','advance','add-source','link-memory','configure-execution']);
   function headers(res){
     res.set('Cache-Control','no-store');res.set('X-Content-Type-Options','nosniff');
     res.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'none'");
@@ -60,10 +60,11 @@ function install(app) {
     });
   }
   api.get('/projects',(req,res)=>run({action:'projects'},res));
+  api.get('/runtime',(req,res)=>run({action:'runtime'},res));
   api.post('/projects',(req,res)=>run({action:'create',data:req.body},res));
   api.get('/project/:name/audit/:target',(req,res)=>run({action:'audit',name:req.params.name,target:req.params.target},res));
   api.get('/project/:name/:view',(req,res)=>{
-    if(!['state','export'].includes(req.params.view))return res.sendStatus(404);
+    if(!['state','export','brief'].includes(req.params.view))return res.sendStatus(404);
     run({action:req.params.view,name:req.params.name},res);
   });
   api.post('/project/:name/:action',(req,res)=>{
