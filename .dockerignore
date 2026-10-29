@@ -1,0 +1,19 @@
+# Default deny: model keys, research, databases and runtime logs never enter a build.
+**
+!Dockerfile
+!cloud/
+!cloud/**
+!explore/
+!explore/**
+!scripts/
+!scripts/**
+!examples/
+!examples/**
+!docs/
+!docs/**
+**/__pycache__/
+**/*.pyc
+**/node_modules/
+**/.env
+**/*.key
+**/*.pem

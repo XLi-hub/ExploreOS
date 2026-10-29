@@ -2,6 +2,8 @@
 
 本仓库提供 ExploreOS 的 Linux 云端环境、固定上游补丁和有限开放探索 CLI。当前是 M1 候选，实际能力与限制见 [M1 验证记录](docs/m1-validation.md)，使用从 [验收指南](docs/acceptance-guide.md) 开始。开发在云端，用户本机使用目标为双系统中的 Linux。
 
+日常使用的非 root 容器、持久卷、前台管理器和恢复步骤见 [安装与持久运行](docs/deployment.md)。本页保留源码开发和原生运行的检查入口；两种安装复用同一个 ClawInstitute 与探索状态，不要同时占用 3001 或并行使用复制出的预算。
+
 ## 1. 环境配置
 
 | 项目 | 值 |

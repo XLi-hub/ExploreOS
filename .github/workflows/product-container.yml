@@ -1,0 +1,21 @@
+name: ExploreOS product container
+on:
+  push:
+    branches: [main, 'codex/**']
+    paths: ['Dockerfile', '.dockerignore', 'compose.yaml', 'scripts/**', 'explore/**', 'cloud/**', 'examples/**', '.github/workflows/product-container.yml']
+  pull_request:
+    paths: ['Dockerfile', '.dockerignore', 'compose.yaml', 'scripts/**', 'explore/**', 'cloud/**', 'examples/**', '.github/workflows/product-container.yml']
+permissions:
+  contents: read
+jobs:
+  product-installation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate compose without real credentials
+        run: docker compose config --quiet
+      - name: Build pinned product without private research or model credentials
+        run: docker build --platform linux/amd64 --tag exploreos:product-check .
+      - name: Check fresh install, supervision, graceful stop and volume replacement
+        run: python3 scripts/cloud/verify_container.py

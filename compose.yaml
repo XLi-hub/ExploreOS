@@ -1,0 +1,22 @@
+name: exploreos
+services:
+  exploreos:
+    build:
+      context: .
+    image: exploreos:local
+    platform: linux/amd64
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3001"
+    environment:
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    volumes:
+      - service:/opt/exploreos/.runtime/service
+      - research:/opt/exploreos/.research
+      - backups:/opt/exploreos/.runtime/backups
+    stop_grace_period: 90s
+volumes:
+  service:
+  research:
+  backups:
