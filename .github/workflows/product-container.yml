@@ -16,6 +16,28 @@ jobs:
       - name: Validate compose without real credentials
         run: docker compose config --quiet
       - name: Build pinned product without private research or model credentials
-        run: docker build --platform linux/amd64 --tag exploreos:product-check .
+        run: docker build --platform linux/amd64 --build-arg VCS_REF="$(git rev-parse HEAD)" --tag exploreos:local .
       - name: Check fresh install, supervision, graceful stop and volume replacement
-        run: python3 scripts/cloud/verify_container.py
+        run: python3 scripts/cloud/verify_container.py --image exploreos:local
+      - name: Package verified image and public installation files
+        run: bash scripts/cloud/package_product.sh
+      - name: Install and start from the packaged image
+        run: |
+          set -euo pipefail
+          mkdir .runtime/package-check
+          tar -xzf .runtime/distribution/exploreos-linux-amd64.tar.gz -C .runtime/package-check
+          cd .runtime/package-check
+          sha256sum -c SHA256SUMS
+          docker load -i exploreos-image.tar.gz
+          trap 'docker compose -p exploreos-package-check down --volumes' EXIT
+          docker compose -p exploreos-package-check up --no-build -d --wait --wait-timeout 120
+          docker compose -p exploreos-package-check exec -T exploreos .venv/bin/python scripts/cloud/product.py health
+          curl --noproxy '*' --fail --silent --output /dev/null http://127.0.0.1:3001/api/v1/exploreos/ui
+      - name: Retain installable product bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: exploreos-linux-amd64-${{ github.sha }}
+          path: .runtime/distribution/exploreos-linux-amd64.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

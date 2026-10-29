@@ -4,6 +4,8 @@
 
 ## Docker Compose 安装
 
+也可以在 [产品容器检查](https://github.com/XLi-hub/ExploreOS/actions/workflows/product-container.yml) 的成功运行页下载 `exploreos-linux-amd64-*` 附件，解压其中的安装包，按内附 README 加载已验证镜像并启动。包包含启动配置、空的模型配置示例、源提交/镜像标识和 SHA-256 校验，不包含真实材料、数据库或密钥。Actions 附件保留 14 天；源码及下面的构建入口持续保留。安装包使用 `docker compose up --no-build -d`，无需获取 npm/Python 依赖。
+
 主机需要 Git、Docker Engine 和 Compose。检出希望使用的提交，在仓库目录执行：
 
 ~~~bash
@@ -23,7 +25,7 @@ docker compose exec -T exploreos cat .runtime/service/home/token
 
 这是协作服务的本地登录令牌，模型密钥单独放在 `.env`，不填入登录页。登录后，新建探索、填写问题、选择真实或演示、按需添加材料，再推进一轮。阶段成果支持来源追溯、改向、简报下载与接续。
 
-端口只发布到主机 loopback。部署在自己的服务器时，可通过 SSH 保持同样的私有访问入口：
+容器内前端监听容器网卡，Compose 仅将端口发布到主机 loopback；源码安装默认仍只监听本机。部署在自己的服务器时，可通过 SSH 保持同样的私有访问入口：
 
 ~~~bash
 ssh -N -L 3001:127.0.0.1:3001 YOUR_USER@YOUR_SERVER
