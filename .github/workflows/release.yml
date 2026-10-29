@@ -42,5 +42,22 @@ jobs:
           (cd .runtime/release/verify && sha256sum -c SHA256SUMS)
           mv .runtime/release/exploreos-linux-amd64.tar.gz ".runtime/release/exploreos-linux-amd64-$RELEASE_TAG.tar.gz"
           (cd .runtime/release && sha256sum "exploreos-linux-amd64-$RELEASE_TAG.tar.gz" > SHA256SUMS)
-      - name: Publish the accepted product with permanent download assets
-        run: gh release create "$RELEASE_TAG" ".runtime/release/exploreos-linux-amd64-$RELEASE_TAG.tar.gz" .runtime/release/SHA256SUMS --repo "$RELEASE_REPOSITORY" --verify-tag --title "ExploreOS $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md"
+      - name: Prepare an unpublished release and upload verified assets
+        run: gh release create "$RELEASE_TAG" ".runtime/release/exploreos-linux-amd64-$RELEASE_TAG.tar.gz" .runtime/release/SHA256SUMS --draft --repo "$RELEASE_REPOSITORY" --verify-tag --title "ExploreOS $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md"
+      - name: Verify the uploaded release assets before publication
+        run: |
+          set -euo pipefail
+          gh api "repos/$RELEASE_REPOSITORY/releases/tags/$RELEASE_TAG" > .runtime/release/remote.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          release = json.loads(Path('.runtime/release/remote.json').read_text())
+          tag = os.environ['RELEASE_TAG']
+          assert release['draft'] and release['tag_name'] == tag
+          expected = {name: (Path('.runtime/release') / name).stat().st_size for name in
+                      (f'exploreos-linux-amd64-{tag}.tar.gz', 'SHA256SUMS')}
+          actual = {asset['name']: asset['size'] for asset in release['assets']}
+          assert actual == expected, 'Uploaded release assets differ from the verified local files'
+          PY
+      - name: Publish the complete accepted release
+        run: gh release edit "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --draft=false --latest
