@@ -76,6 +76,10 @@ def request(project, state, actor, round_record):
 def validate(output, context):
     if not isinstance(output, dict):
         raise ValueError("A report must be a JSON object")
+    keys = {"title", "overview", "conclusions", "disagreements", "next_steps", "unknowns",
+            "report_basis_sha256", "included_finding_ids", "omitted_finding_ids", "qualification"}
+    if set(output) - keys:
+        raise ValueError("A report cannot publish actions, private memory or new source records")
     allowed = {item["id"] for item in context["peers"]}
 
     def text(value, maximum):
