@@ -178,6 +178,14 @@ assert len(p.file.read()[0]["calls"]) == 1
     await page.locator('#project-search').fill('no-matching-project-827456');
     await page.getByText('没有匹配的问题，试试其他关键词。', {exact: true}).waitFor();
     await page.locator('#project-search').fill('');
+    await page.getByRole('button', {name: '＋ 新建探索', exact: true}).click();
+    assert.equal(await page.locator('#create-form [name="backend"]').inputValue(), 'pi');
+    await page.locator('#create-form [name="question"]').fill('真实问题不得自动变成演示结果');
+    await page.locator('#create-form [type="submit"]').click();
+    await page.getByRole('heading', {name: '真实问题不得自动变成演示结果', exact: true}).waitFor();
+    await page.locator('#provider-status').waitFor({state: 'visible'});
+    assert(await page.locator('[data-action="advance"]').isDisabled());
+    assert((await page.locator('#provider-status').innerText()).includes('DEEPSEEK_API_KEY'));
     assert.deepEqual(errors, []);
     console.log('PASS: question-only creation, saved zero-model mode, material ingestion, focus/extra-round forms, readable brief download/reopen, qualified memory, legacy failure recovery, native workshop entry guided example, accessible tabs, search, persistent themes and mobile layout (zero model calls).');
   } finally {
