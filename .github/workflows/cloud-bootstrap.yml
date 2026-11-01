@@ -5,6 +5,7 @@ on:
     paths:
       - 'cloud/**'
       - 'scripts/cloud/**'
+      - 'scripts/distribution/**'
       - 'scripts/*.py'
       - 'scripts/*.mjs'
       - 'scripts/*.cjs'
@@ -21,6 +22,7 @@ on:
     paths:
       - 'cloud/**'
       - 'scripts/cloud/**'
+      - 'scripts/distribution/**'
       - 'scripts/*.py'
       - 'scripts/*.mjs'
       - 'scripts/*.cjs'
@@ -55,7 +57,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Check shell syntax
-        run: bash -n scripts/cloud/setup.sh scripts/cloud/setup_pi.sh scripts/cloud/setup_claude.sh scripts/cloud/setup_subagents.sh
+        run: bash -n scripts/cloud/setup.sh scripts/cloud/setup_pi.sh scripts/cloud/setup_claude.sh scripts/cloud/setup_subagents.sh scripts/cloud/package_product.sh scripts/distribution/exploreos.sh
       - name: Install audited upstream runtime
         run: bash scripts/cloud/setup.sh
       - name: Install pinned Pi libraries without model calls
@@ -97,11 +99,13 @@ jobs:
           .venv/bin/python scripts/cloud/runtime.py stop
           EXPLORE_FRONTEND=1 .venv/bin/python scripts/cloud/runtime.py start
           node scripts/check_native_ui.cjs
+          mkdir browser-previews
+          cp .runtime/native-exploration-desktop.png .runtime/native-exploration-mobile.png .runtime/native-linked-memory-mobile.png .runtime/native-exploration-dark-mobile.png .runtime/native-exploration-dark-desktop.png browser-previews/
       - name: Retain public demonstration screenshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: exploreos-browser-previews-${{ github.sha }}
-          path: .runtime/native-*.png
+          path: browser-previews/*.png
           if-no-files-found: error
           retention-days: 14
       - name: Stop owned service
