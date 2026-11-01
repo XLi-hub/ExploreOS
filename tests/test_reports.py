@@ -121,6 +121,25 @@ class ReportTests(unittest.TestCase):
         project.generate_report(self.backend)
         self.assertEqual(len(project.file.read()[0]["retired_calls"]), 1)
 
+    def test_inflight_report_is_historical_if_the_user_changes_focus(self):
+        project = self.project
+        entered, release = threading.Event(), threading.Event()
+        class Waiting(SimulatedBackend):
+            def call(self, *args, **kwargs):
+                entered.set()
+                release.wait(timeout=10)
+                return super().call(*args, **kwargs)
+        with ThreadPoolExecutor(1) as pool:
+            future = pool.submit(project.generate_report, Waiting())
+            self.assertTrue(entered.wait(timeout=10))
+            project.control("steer", "A different question while the report is running")
+            release.set()
+            future.result(timeout=10)
+        view = self.service.state(project)
+        self.assertFalse(view["brief"]["reports"][0]["current"])
+        self.assertIn("历史报告", view["brief"]["markdown"])
+        self.assertFalse(view["brief"]["findings"])
+
     def test_committed_publication_with_lost_response_recovers_without_second_call(self):
         project = self.project
         original = self.client.publish
