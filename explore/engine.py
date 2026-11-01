@@ -12,7 +12,7 @@ import uuid
 from scripts.cloud.runtime import ROOT
 from .bootstrap import launch
 from .memory import Memory, select_shared_memory
-from . import assessments, cross_memory, policy, reviews
+from . import assessments, cross_memory, policy, reviews, reports
 from .subagents import read_receipt, terminal as plugin_terminal
 from .models import REAL_BACKENDS, parse_json_output
 from .store import Conflict, JsonFile, atomic_local
@@ -370,6 +370,8 @@ class Project:
         return self.file.update("source-assessment:" + assessment_id + ":" + assessments.digest(supplied), change)
 
     def request_for(self, state, actor, phase, round_record):
+        if phase == "report":
+            return reports.request(self, state, actor, round_record)
         semantic_policy = policy.normalize(state.get("semantic_policy"))
         review_context = None
         if phase == "reflect":
@@ -499,6 +501,8 @@ class Project:
         return request
 
     def validate(self, output, request):
+        if request["phase"] == "report":
+            return reports.validate(output, request)
         if not isinstance(output, dict):
             raise ValueError("Participant returned a non-object")
         phase = request["phase"]
@@ -793,9 +797,11 @@ class Project:
                 failure=failure)
             raise
 
-    def advance(self, backend, *, trigger=None, evaluation_case=None):
+    def advance(self, backend, *, trigger=None, evaluation_case=None, report_only=False):
         observed, _ = self.file.read()
         binding = observed.get("evaluation_binding")
+        if report_only and binding:
+            raise ValueError("Frozen evaluations retain their original aggregation and call ceilings")
         if binding:
             if evaluation_case != binding:
                 raise ValueError("Advance a frozen case through its evaluation campaign")
@@ -821,6 +827,8 @@ class Project:
             return True
         self.file.update("controller:" + owner, own)
         try:
+            if report_only:
+                return self._report_owned(backend, owner)
             return self._advance_owned(backend, owner, trigger=trigger)
         finally:
             def release(state):
@@ -828,6 +836,30 @@ class Project:
                     state.pop("controller", None)
                 return True
             self.file.update("release:" + owner, release)
+
+    def generate_report(self, backend):
+        return self.advance(backend, report_only=True)
+
+    def _report_owned(self, backend, owner):
+        state, _ = self.file.read()
+        if (state["status"] != "active" or not state["rounds"]
+                or state["rounds"][-1]["status"] != "completed"):
+            raise ValueError("Generate a report after a completed round in an active project")
+        record = state["rounds"][-1]
+        if record["question_revision"] != len(state["question_revisions"]):
+            raise ValueError("Explore the changed question before generating its report")
+        attempts = [*state["calls"].values(), *state.get("retired_calls", {}).values()]
+        if {call["backend"] for call in attempts} != {backend.name}:
+            raise ValueError("Reports must use the project's existing execution backend")
+        actor = list(state["agents"])[(record["number"] - 1) % len(state["agents"])]
+        slot = f"r{record['number']}.report.{actor}"
+        prior = state["calls"].get(slot)
+        if prior and prior["status"] == "completed":
+            saved = self.call_details(prior)["request"]
+            if saved["report_basis_sha256"] != reports.fingerprint(state):
+                raise ValueError("The report is historical; complete a new round for changed inputs")
+            return prior["post_id"]
+        return self.perform(actor, "report", record, backend, owner)
 
     def _advance_owned(self, backend, owner, *, trigger=None):
         def start(state):
