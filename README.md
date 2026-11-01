@@ -92,6 +92,8 @@ docker compose exec -T exploreos cat .runtime/service/home/token
 
 支持的主执行路径是 **Pi + DeepSeek**；Pi 前台子代理与历史 Claude 路径为高级选项。界面中的配置状态不代替实际供应商连通验证。真实与演示项目分别保存，运行后不混换后端。
 
+完成一轮后可显式[生成综合报告](docs/stage-reports.md)，得到带发现引用的阶段判断、竞争解释、适用限制与下一步。真实生成计入共享预算；输入变化后旧报告标为历史，重复查看和导出不再调用模型。
+
 ## 日常使用
 
 ~~~bash
