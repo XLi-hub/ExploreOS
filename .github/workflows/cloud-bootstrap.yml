@@ -35,12 +35,15 @@ on:
       - 'docs/releases/**'
 permissions:
   contents: read
+concurrency:
+  group: cloud-checks-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   upstream-api:
     runs-on: ubuntu-24.04
     env:
       EXPLORE_FRONTEND: '0'
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -85,6 +88,22 @@ jobs:
           .venv/bin/python scripts/cloud/m0.py verify
       - name: Verify private cold backup and isolated database restore
         run: .venv/bin/python scripts/cloud/verify_backup.py
+      - name: Install pinned browser test runner
+        run: |
+          npm install --prefix .runtime/browser --no-audit --no-fund --save-exact playwright@1.56.1
+          .runtime/browser/node_modules/.bin/playwright install --with-deps chromium
+      - name: Exercise real browser workflows without model calls
+        run: |
+          .venv/bin/python scripts/cloud/runtime.py stop
+          EXPLORE_FRONTEND=1 .venv/bin/python scripts/cloud/runtime.py start
+          node scripts/check_native_ui.cjs
+      - name: Retain public demonstration screenshots
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: exploreos-browser-previews-${{ github.sha }}
+          path: .runtime/native-*.png
+          if-no-files-found: error
+          retention-days: 14
       - name: Stop owned service
         if: always()
         run: |
