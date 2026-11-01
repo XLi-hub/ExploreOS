@@ -4,7 +4,7 @@ on:
     branches: [main, 'codex/**']
     paths: ['Dockerfile', '.dockerignore', 'compose.yaml', 'scripts/**', 'explore/**', 'cloud/**', 'examples/**', '.github/workflows/product-container.yml', '.github/workflows/release.yml', '.release/**', 'docs/releases/**', 'docs/prebuilt-install.md']
   pull_request:
-    paths: ['Dockerfile', '.dockerignore', 'compose.yaml', 'scripts/**', 'explore/**', 'cloud/**', 'examples/**', '.github/workflows/product-container.yml', '.github/workflows/release.yml', '.release/**', 'docs/releases/**']
+    paths: ['Dockerfile', '.dockerignore', 'compose.yaml', 'scripts/**', 'explore/**', 'cloud/**', 'examples/**', '.github/workflows/product-container.yml', '.github/workflows/release.yml', '.release/**', 'docs/releases/**', 'docs/prebuilt-install.md']
 permissions:
   contents: read
 concurrency:
@@ -31,6 +31,7 @@ jobs:
           tar -xzf .runtime/distribution/exploreos-linux-amd64.tar.gz -C .runtime/package-check
           cd .runtime/package-check
           bash exploreos.sh verify
+          docker image rm exploreos:local
           trap 'docker compose -p exploreos-package-check down --volumes' EXIT
           COMPOSE_PROJECT_NAME=exploreos-package-check bash exploreos.sh start
           COMPOSE_PROJECT_NAME=exploreos-package-check bash exploreos.sh status
