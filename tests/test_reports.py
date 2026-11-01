@@ -31,6 +31,7 @@ class ReportTests(unittest.TestCase):
         current = project.file.read()[0]
         self.assertEqual(len(current["calls"]), len(before["calls"]) + 1)
         self.assertEqual(current["knowledge"], before["knowledge"])
+        self.assertFalse(current["agents"][next(iter(current["agents"]))]["read_posts"])
         with patch.object(self.backend, "call", side_effect=AssertionError("No duplicate model request")):
             self.assertEqual(project.generate_report(self.backend), post_id)
         view = self.service.state(project)
