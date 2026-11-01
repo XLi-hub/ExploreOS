@@ -76,6 +76,36 @@ class PiTests(unittest.TestCase):
             self.assertTrue(any(e["type"] == "agent_end" for e in record["pi_events"]))
         self.assertFalse(list(self.directory.rglob("auth.json")))
 
+    def test_report_uses_owned_larger_allowance_and_reuses_the_same_paid_admission_rules(self):
+        from explore.reports import fixture as report_fixture
+        project = Project.create(Client(), "reportpi_" + uuid.uuid4().hex[:12],
+                                 mode="single", question="What remains uncertain?",
+                                 max_invocations_per_round=16)
+        fixture = SimulatedBackend()
+        limits = []
+        def supplier(*args, **kwargs):
+            payload = json.loads(kwargs["data"])
+            text = "".join(block["text"] for message in payload["messages"] if message["role"] == "user"
+                           for block in message["content"] if block["type"] == "text")
+            request = json.loads(text)[0]
+            limits.append((request["phase"], payload["max_tokens"]))
+            output = report_fixture(request) if request["phase"] == "report" else fixture.call("fixture", [request], project.directory)
+            return response(json.dumps(output))
+        with patch("explore.models.requests.post", side_effect=supplier) as remote:
+            backend = PiBackend(ROOT, self.gateway)
+            project.advance(backend)
+            project.generate_report(backend)
+            self.assertEqual(remote.call_count, 4)
+            project.generate_report(backend)
+            self.assertEqual(remote.call_count, 4)
+        self.assertEqual(limits[-1], ("report", 4096))
+        self.assertTrue(all(limit == 900 for phase, limit in limits if phase != "report"))
+        report_call = next(call for call in project.file.read()[0]["calls"].values() if call["phase"] == "report")
+        record = self.budget.file.read()[0]["requests"][report_call["id"]]
+        self.assertEqual(record["state"], "received")
+        self.assertEqual(record["request_metadata"]["output_tokens"], 4096)
+        self.assertTrue(any(event["type"] == "agent_end" for event in record["pi_events"]))
+
     def test_pi_sdk_does_not_retry_supplier_error(self):
         error = SimpleNamespace(status_code=500, content=b'{"type":"error","error":{"type":"api_error","message":"fixture"}}',
                                 headers={"Content-Type": "application/json"})
