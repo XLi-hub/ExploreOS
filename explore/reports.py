@@ -40,8 +40,8 @@ def request(project, state, actor, round_record):
         "peers": [], "previously_read_peer_ids": [], "index_cursor": len(state["posts"]),
         "omitted_finding_ids": [], "contract": {
             "title": "具体回答当前问题的报告标题",
-            "overview": "直接回应问题的阶段判断，解释理由和仍不能确定的部分；最多1500字",
-            "conclusions": [{"claim": "一项有用的判断，最多600字",
+            "overview": "直接回应问题的阶段判断，解释理由和仍不能确定的部分；最多500字",
+            "conclusions": [{"claim": "一项有用的判断，最多250字",
                              "basis": ["实际提供的发现ID，可多条"],
                              "caveat": "支持范围、反例或适用限制，不可省略"}],
             "disagreements": [{"issue": "竞争解释或尚存分歧", "basis": ["发现ID"],
@@ -56,7 +56,7 @@ def request(project, state, actor, round_record):
             "不要按智能体逐个复述；比较解释，回应用户的问题，区分推断、建议和未决问题。"
             "结论与下一步必须引用实际提供的发现ID。不要创造来源，不把同伴一致当作证据。"
             "有争议、无外部材料或范围有限时明确限制；未给出的记录不能声称已审阅。"
-            "输出严格JSON，最多6项结论、6项分歧、6项下一步、8项未知。不改变原始发现。"
+            "输出严格JSON，整份报告约1200至1600中文字符，优先3项关键判断与3项下一步。最多6项结论、6项分歧、6项下一步、8项未知，不为凑满数量重复。不改变原始发现。"
         ),
     }
     # Include whole records, never cropped quotations or silently lost objections.
