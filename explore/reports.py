@@ -30,7 +30,12 @@ def request(project, state, actor, round_record):
             continue
         content = json.loads(project.client.request("GET", "/posts/" + entry["id"])["content"])
         candidates.append({"id": entry["id"], "actor": entry["actor"], "round": entry["round"],
-                           "content": content, "knowledge": knowledge})
+                           "content": content, "knowledge": knowledge,
+                           "assessments": [item for item in (state.get("source_assessments") or {}).values()
+                                           if item["target_post"] == entry["id"]]})
+    candidates.sort(key=lambda item: not (
+        item["knowledge"].get("status") == "contested"
+        or any(review["verdict"] in ("unsupported", "partial") for review in item["assessments"])))
     if not candidates:
         raise ValueError("Complete findings for the current question before generating a report")
     result = {
