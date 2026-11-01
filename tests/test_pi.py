@@ -81,6 +81,8 @@ class PiTests(unittest.TestCase):
         project = Project.create(Client(), "reportpi_" + uuid.uuid4().hex[:12],
                                  mode="single", question="What remains uncertain?",
                                  max_invocations_per_round=16)
+        project.file.update("native-product-fixture", lambda state: state.update(
+            native_execution={"backend": "pi", "budget_cny": 1}))
         fixture = SimulatedBackend()
         limits = []
         def supplier(*args, **kwargs):
@@ -99,7 +101,7 @@ class PiTests(unittest.TestCase):
             project.generate_report(backend)
             self.assertEqual(remote.call_count, 4)
         self.assertEqual(limits[-1], ("report", 4096))
-        self.assertTrue(all(limit == 900 for phase, limit in limits if phase != "report"))
+        self.assertEqual(limits, [("propose", 900), ("plan", 900), ("reflect", 3072), ("report", 4096)])
         report_call = next(call for call in project.file.read()[0]["calls"].values() if call["phase"] == "report")
         record = self.budget.file.read()[0]["requests"][report_call["id"]]
         self.assertEqual(record["state"], "received")
