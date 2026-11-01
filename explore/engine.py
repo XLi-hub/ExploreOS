@@ -864,7 +864,21 @@ class Project:
             if saved["report_basis_sha256"] != reports.fingerprint(state):
                 raise ValueError("The report is historical; complete a new round for changed inputs")
             return prior["post_id"]
-        return self.perform(actor, "report", record, backend, owner)
+        try:
+            return self.perform(actor, "report", record, backend, owner)
+        except Exception:
+            def block(current):
+                if current["status"] == "active":
+                    current["status"] = "blocked"
+                    current["last_errors"] = ["report_execution"]
+            self.file.update("report-blocked:" + owner, block)
+            raise
+        finally:
+            def finish(current):
+                if current["status"] == "cancelling":
+                    current["status"] = "paused"
+                    self.event(current, "report_cancelled", round=record["number"])
+            self.file.update("report-finished:" + owner, finish)
 
     def _advance_owned(self, backend, owner, *, trigger=None):
         def start(state):
