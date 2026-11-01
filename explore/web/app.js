@@ -58,7 +58,6 @@ async function openCreate(starter=null){
   if(starterIntent==="demo")form.elements.backend.value="simulated";
   $("create-dialog").showModal();form.elements.question.focus();
   await readRuntime();
-  if(starterIntent!=="demo"&&runtimeInfo&&(runtimeInfo.credential!=="configured"||!runtimeInfo.pi_ready))form.elements.backend.value="simulated";
   showRuntime(form);
 }
 $("new-project").onclick=openCreate;$("empty-create").onclick=openCreate;
@@ -76,7 +75,7 @@ $("create-form").onsubmit=async e=>{
     starterIntent=null;
   }catch(error){$("create-error").textContent=error.message}finally{submit.disabled=false}
 };
-$("refresh").onclick=async()=>{await load();await projects()};$("download").onclick=async()=>{try{const data=await api(`/api/project/${selected}/export`);const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));const a=document.createElement("a");a.href=url;a.download=selected+"-export.json";a.click();URL.revokeObjectURL(url)}catch(error){note(error.message)}};
+$("refresh").onclick=async()=>{await readRuntime();await load();await projects()};$("download").onclick=async()=>{try{const data=await api(`/api/project/${selected}/export`);const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));const a=document.createElement("a");a.href=url;a.download=selected+"-export.json";a.click();URL.revokeObjectURL(url)}catch(error){note(error.message)}};
 selected=/^[a-z0-9_]{1,24}$/.test(location.hash.slice(1))?location.hash.slice(1):null;projects().then(()=>selected&&load()).catch(e=>note(e.message));setInterval(()=>selected&&!document.hidden&&!document.querySelector("#content details[open],dialog[open]")&&load(),6000);
 
 $("project-search").oninput=renderProjects;
@@ -94,7 +93,7 @@ async function openMemory(){const form=$("memory-form");form.reset();$("memory-e
 $("memory-form").elements.origin_name.onchange=memoryOrigin;$("memory-form").elements.post_id.onchange=memoryPreview;$("close-memory").onclick=()=>$("memory-dialog").close();
 $("memory-form").onsubmit=async event=>{event.preventDefault();const submit=event.target.querySelector('[type="submit"]');submit.disabled=true;try{const data=Object.fromEntries(new FormData(event.target));if(!data.origin_name||!data.post_id)throw Error("请选择已有发现的来源课题。");await api(`/api/project/${selected}/link-memory`,data);$("memory-dialog").close();await load();note("已保存带出处与适用条件的引用。")}catch(error){$("memory-error").textContent=error.message}finally{submit.disabled=false}};
 
-function updateControls(){if(!snapshot)return;const switching=snapshot.name!==selected;const exhausted=snapshot.rounds.length>=snapshot.max_rounds&&["completed","cancelled"].includes(snapshot.rounds.at(-1)?.status);$("round-limit").hidden=!exhausted||Boolean(snapshot.evaluation_binding);$("add-source").disabled=controlling||switching||Boolean(snapshot.evaluation_binding);for(const button of document.querySelectorAll("[data-action]"))button.disabled=controlling||switching||(button.dataset.action==="report"&&(!snapshot.rounds.length||snapshot.rounds.at(-1).status!=="completed"||snapshot.rounds.at(-1).question_revision!==snapshot.question_revisions.at(-1).number||snapshot.status!=="active"||Boolean(snapshot.evaluation_binding)))||(button.dataset.action==="extend"&&Boolean(snapshot.evaluation_binding))||(button.dataset.action==="advance"&&(Boolean(snapshot.evaluation_binding)||exhausted||snapshot.status!=="active"));$("execution-settings").disabled=controlling||switching||Boolean(snapshot.evaluation_binding);for(const button of document.querySelectorAll("#content button"))button.disabled=controlling||switching||(button.dataset.mutable==="true"&&Boolean(snapshot.evaluation_binding))}
+function updateControls(){if(!snapshot)return;renderProviderStatus();const providerBlocked=providerUnavailable();const switching=snapshot.name!==selected;const exhausted=snapshot.rounds.length>=snapshot.max_rounds&&["completed","cancelled"].includes(snapshot.rounds.at(-1)?.status);$("round-limit").hidden=!exhausted||Boolean(snapshot.evaluation_binding);$("add-source").disabled=controlling||switching||Boolean(snapshot.evaluation_binding);for(const button of document.querySelectorAll("[data-action]"))button.disabled=controlling||switching||(button.dataset.action==="report"&&(providerBlocked||!snapshot.rounds.length||snapshot.rounds.at(-1).status!=="completed"||snapshot.rounds.at(-1).question_revision!==snapshot.question_revisions.at(-1).number||snapshot.status!=="active"||Boolean(snapshot.evaluation_binding)))||(button.dataset.action==="extend"&&Boolean(snapshot.evaluation_binding))||(button.dataset.action==="advance"&&(providerBlocked||Boolean(snapshot.evaluation_binding)||exhausted||snapshot.status!=="active"));$("execution-settings").disabled=controlling||switching||Boolean(snapshot.evaluation_binding);for(const button of document.querySelectorAll("#content button"))button.disabled=controlling||switching||(button.dataset.mutable==="true"&&Boolean(snapshot.evaluation_binding))}
 window.addEventListener('hashchange',()=>{const next=location.hash.slice(1)||projectIndex[0]?.name;if(next&&next!==selected){if(!/^[a-z0-9_]{1,24}$/.test(next)){note('项目名称格式不正确。');return}selected=next;load()}});
 
 function selectTab(){for(const x of document.querySelectorAll("[data-tab]")){
@@ -137,7 +136,7 @@ function renderProgress(){
   const brief=snapshot.brief,backend=snapshot.native_execution?.backend;
   $("progress").textContent=snapshot.calls.some(c=>["unknown","received"].includes(c.status))?"本轮有调用结果需要核对，请打开运行状态查看；未知额度继续保留。":brief?.outstanding_calls?`正在推进：${brief.completed_calls} 次调用已完成，${brief.outstanding_calls} 次待完成或核对。可以离开页面，回来后查看实际记录。`:brief?.failed_calls?"本轮有执行需要处理，请在运行状态中检查。":snapshot.calls.length?`已保存 ${brief?.completed_rounds||0} 轮完整记录。${backend==="simulated"?"当前为零付费机械演示。":""}`:"尚未调用模型。可先添加材料，再开始探索。";
 }
-async function readRuntime(){try{runtimeInfo=await api("/api/runtime")}catch(error){runtimeInfo=null;note(error.message)}}
+async function readRuntime(){try{runtimeInfo=await api("/api/runtime")}catch(error){runtimeInfo=null;note(error.message)}updateControls()}
 function showRuntime(form){
   const real=form.elements.backend.value!=="simulated",budget=runtimeInfo?.budget;
   form.querySelector(".budget-field").hidden=!real||Boolean(budget);
@@ -255,3 +254,20 @@ function renderStageReport(out){
     const el=node("details");el.append(node("summary",item.content.title),node("p","问题、材料、方向或认识状态已有变化，这份报告不作为当前结论。","small"),node("p",item.content.overview));a.append(el);
   }out.append(a);}
 }
+
+function providerUnavailable(){
+  const backend=snapshot?.native_execution?.backend;
+  if(!backend||backend==="simulated"||!runtimeInfo)return false;
+  return runtimeInfo.credential!=="configured"||(backend==="pi"&&!runtimeInfo.pi_ready)||runtimeInfo.network==="not_allowed_at_startup";
+}
+function renderProviderStatus(){
+  const el=$("provider-status");el.hidden=!providerUnavailable();
+  if(el.hidden)return;
+  const messages=["真实探索尚未就绪。问题和材料可以保存，执行前请完成模型配置。"];
+  if(runtimeInfo.credential!=="configured")messages.push("在安装主机的私有 .env 配置 DEEPSEEK_API_KEY，运行 docker compose up --no-build -d，然后刷新。模型密钥不填入登录页。");
+  if(snapshot.native_execution?.backend==="pi"&&!runtimeInfo.pi_ready)messages.push("Pi 执行依赖尚未就绪；源码安装请运行 bash scripts/cloud/setup_pi.sh。");
+  if(runtimeInfo.network==="not_allowed_at_startup")messages.push("本环境的启动网络策略尚未允许模型服务，需要先恢复供应商网络访问。");
+  messages.push("需要体验流程时，请在使用指南中明确打开零付费示例。");
+  el.textContent=messages.join("\n");
+}
+readRuntime();
