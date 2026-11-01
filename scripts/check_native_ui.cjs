@@ -29,7 +29,7 @@ except RuntimeError:
     pass
 assert len(p.file.read()[0]["calls"]) == 1
 `, failedName], {cwd: root, stdio: ['ignore', 'pipe', 'pipe']});
-  const browser = await chromium.launch({executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
+  const browser = await chromium.launch({executablePath: process.env.CHROMIUM_PATH || undefined,
     headless: true, args: ['--no-sandbox']});
   try {
     const page = await browser.newPage({viewport: {width: 1440, height: 1000}});
@@ -56,7 +56,7 @@ assert len(p.file.read()[0]["calls"]) == 1
     await page.getByRole('button', {name: '保存材料', exact: true}).click();
     await page.getByRole('heading', {name: '访谈片段', exact: true}).waitFor();
     assert((await page.locator('#content').innerText()).includes('1: 初次访谈不能代表所有使用者。'));
-    await page.getByRole('button', {name: '发现与分歧', exact: true}).click();
+    await page.getByRole('tab', {name: '发现与分歧', exact: true}).click();
     await page.getByRole('button', {name: '推进一轮', exact: true}).click();
     await page.waitForFunction(() => document.querySelectorAll('#content article').length === 3);
     await page.locator('.project-controls summary').click();
@@ -92,10 +92,10 @@ assert len(p.file.read()[0]["calls"]) == 1
     assert(briefText.includes('## 历史发现'));
     assert(briefText.includes('mechanical_fixture'));
     await page.reload();
-    await page.getByRole('button', {name: '阶段成果', exact: true}).waitFor();
+    await page.getByRole('tab', {name: '阶段成果', exact: true}).waitFor();
     await page.getByRole('heading', {name: '当前发现', exact: true}).waitFor();
     assert((await page.locator('#content').innerText()).includes('机械演示成果'));
-    await page.getByRole('button', {name: '发现与分歧', exact: true}).click();
+    await page.getByRole('tab', {name: '发现与分歧', exact: true}).click();
     await page.waitForFunction(() => document.querySelectorAll('#content article').length === 9);
     await page.locator('#projects button.selected').waitFor();
     const discussion = await page.locator('#native-discussion').getAttribute('href');
@@ -113,7 +113,7 @@ assert len(p.file.read()[0]["calls"]) == 1
     await page.locator('#create-form [name="question"]').fill('另一课题怎样使用有条件的旧发现？');
     await page.getByRole('button', {name: '创建项目', exact: true}).click();
     await page.locator('#question').filter({hasText: '另一课题怎样使用有条件的旧发现？'}).waitFor();
-    await page.getByRole('button', {name: '跨课题记忆', exact: true}).click();
+    await page.getByRole('tab', {name: '跨课题记忆', exact: true}).click();
     await page.getByRole('button', {name: '引用其他课题发现', exact: true}).click();
     await page.locator('#memory-form [name="origin_name"]').selectOption(name);
     await page.waitForFunction(() => !document.querySelector('#memory-form [name="post_id"]').disabled);
@@ -131,7 +131,7 @@ assert len(p.file.read()[0]["calls"]) == 1
     await page.locator('#question').filter({hasText: '现在重点检查新成员如何理解过去的异议。'}).waitFor();
     await page.goto(origin + '/api/v1/exploreos/ui#' + failedName);
     await page.locator('#question').filter({hasText: 'Can a corrected mechanical attempt resume?'}).waitFor();
-    await page.getByRole('button', {name: '运行状态', exact: true}).click();
+    await page.getByRole('tab', {name: '运行状态', exact: true}).click();
     await page.getByRole('button', {name: '核对中断执行', exact: true}).click();
     await page.getByText('已保存', {exact: true}).waitFor();
     page.once('dialog', dialog => dialog.accept('机械替身已经修正，授权一次新的尝试。'));
@@ -139,10 +139,42 @@ assert len(p.file.read()[0]["calls"]) == 1
     await page.getByRole('button', {name: '授权修正后重试', exact: true}).waitFor({state: 'detached'});
     await page.getByRole('button', {name: '推进一轮', exact: true}).click();
     await page.locator('#execution-form [type="submit"]').click();
-    await page.getByRole('button', {name: '发现与分歧', exact: true}).click();
+    await page.getByRole('tab', {name: '发现与分歧', exact: true}).click();
     await page.waitForFunction(() => document.querySelectorAll('#content article').length === 1);
+
+    // Exercise the guided example from an existing workspace as well as theme persistence.
+    await page.getByRole('button', {name: '使用指南', exact: true}).click();
+    await page.getByRole('heading', {name: '从好问题，到有依据的下一步。', exact: true}).waitFor();
+    await page.getByRole('button', {name: '打开零付费示例', exact: true}).click();
+    assert.equal(await page.locator('#create-form [name="backend"]').inputValue(), 'simulated');
+    await page.locator('#create-form [type="submit"]').click();
+    await page.locator('#create-dialog').waitFor({state: 'hidden'});
+    await page.getByText('零付费示例已准备好。点击「推进一轮」，再查看发现、来源和分歧。', {exact: true}).waitFor();
+    assert.notEqual(new URL(page.url()).hash.slice(1), name);
+    await page.getByRole('tab', {name: '来源材料', exact: true}).click();
+    await page.getByRole('heading', {name: '示例材料 · 访谈片段', exact: true}).waitFor();
+    await page.getByRole('button', {name: '推进一轮', exact: true}).click();
+    await page.getByRole('tab', {name: '发现与分歧', exact: true}).click();
+    await page.waitForFunction(() => document.querySelectorAll('#content article').length === 3);
+    await page.getByRole('tab', {name: '发现与分歧', exact: true}).focus();
+    await page.keyboard.press('Home');
+    assert.equal(await page.getByRole('tab', {name: '阶段成果', exact: true}).getAttribute('aria-selected'), 'true');
+    await page.getByRole('button', {name: '切换深色外观', exact: true}).click();
+    await page.reload();
+    await page.getByRole('heading', {name: '当前发现', exact: true}).waitFor();
+    assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await page.screenshot({path: path.join(root, '.runtime/native-exploration-dark-mobile.png'), fullPage: true});
+    await page.setViewportSize({width: 1440, height: 1000});
+    await page.screenshot({path: path.join(root, '.runtime/native-exploration-dark-desktop.png'), fullPage: true});
+    await page.getByRole('button', {name: '切换浅色外观', exact: true}).click();
+    await page.keyboard.press('Control+k');
+    assert.equal(await page.locator('#project-search').evaluate(el => el === document.activeElement), true);
+    await page.locator('#project-search').fill('no-matching-project-827456');
+    await page.getByText('没有匹配的问题，试试其他关键词。', {exact: true}).waitFor();
+    await page.locator('#project-search').fill('');
     assert.deepEqual(errors, []);
-    console.log('PASS: question-only creation, saved zero-model mode, material ingestion, focus/extra-round forms, readable brief download/reopen, qualified memory, legacy failure recovery, native workshop entry and mobile layout (zero model calls).');
+    console.log('PASS: question-only creation, saved zero-model mode, material ingestion, focus/extra-round forms, readable brief download/reopen, qualified memory, legacy failure recovery, native workshop entry guided example, accessible tabs, search, persistent themes and mobile layout (zero model calls).');
   } finally {
     await browser.close();
   }

@@ -5,6 +5,7 @@ on:
     paths:
       - 'cloud/**'
       - 'scripts/cloud/**'
+      - 'scripts/distribution/**'
       - 'scripts/*.py'
       - 'scripts/*.mjs'
       - 'scripts/*.cjs'
@@ -21,6 +22,7 @@ on:
     paths:
       - 'cloud/**'
       - 'scripts/cloud/**'
+      - 'scripts/distribution/**'
       - 'scripts/*.py'
       - 'scripts/*.mjs'
       - 'scripts/*.cjs'
@@ -35,12 +37,15 @@ on:
       - 'docs/releases/**'
 permissions:
   contents: read
+concurrency:
+  group: cloud-checks-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   upstream-api:
     runs-on: ubuntu-24.04
     env:
       EXPLORE_FRONTEND: '0'
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -52,7 +57,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Check shell syntax
-        run: bash -n scripts/cloud/setup.sh scripts/cloud/setup_pi.sh scripts/cloud/setup_claude.sh scripts/cloud/setup_subagents.sh
+        run: bash -n scripts/cloud/setup.sh scripts/cloud/setup_pi.sh scripts/cloud/setup_claude.sh scripts/cloud/setup_subagents.sh scripts/cloud/package_product.sh scripts/distribution/exploreos.sh
       - name: Install audited upstream runtime
         run: bash scripts/cloud/setup.sh
       - name: Install pinned Pi libraries without model calls
@@ -85,6 +90,24 @@ jobs:
           .venv/bin/python scripts/cloud/m0.py verify
       - name: Verify private cold backup and isolated database restore
         run: .venv/bin/python scripts/cloud/verify_backup.py
+      - name: Install pinned browser test runner
+        run: |
+          npm install --prefix .runtime/browser --no-audit --no-fund --save-exact playwright@1.56.1
+          .runtime/browser/node_modules/.bin/playwright install --with-deps chromium
+      - name: Exercise real browser workflows without model calls
+        run: |
+          .venv/bin/python scripts/cloud/runtime.py stop
+          EXPLORE_FRONTEND=1 .venv/bin/python scripts/cloud/runtime.py start
+          node scripts/check_native_ui.cjs
+          mkdir browser-previews
+          cp .runtime/native-exploration-desktop.png .runtime/native-exploration-mobile.png .runtime/native-linked-memory-mobile.png .runtime/native-exploration-dark-mobile.png .runtime/native-exploration-dark-desktop.png browser-previews/
+      - name: Retain public demonstration screenshots
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: exploreos-browser-previews-${{ github.sha }}
+          path: browser-previews/*.png
+          if-no-files-found: error
+          retention-days: 14
       - name: Stop owned service
         if: always()
         run: |

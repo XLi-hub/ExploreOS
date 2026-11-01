@@ -25,11 +25,12 @@ mkdir "$PACKAGE_TEMP/bundle"
 docker save "$IMAGE" | gzip -1 > "$PACKAGE_TEMP/bundle/exploreos-image.tar.gz"
 cp compose.yaml .env.example "$PACKAGE_TEMP/bundle/"
 cp docs/prebuilt-install.md "$PACKAGE_TEMP/bundle/README.md"
+cp scripts/distribution/exploreos.sh "$PACKAGE_TEMP/bundle/exploreos.sh"
 printf '%s\n' "$REVISION" > "$PACKAGE_TEMP/bundle/SOURCE_COMMIT.txt"
 docker image inspect --format '{{.Id}}' "$IMAGE" > "$PACKAGE_TEMP/bundle/IMAGE_ID.txt"
 (
   cd "$PACKAGE_TEMP/bundle"
-  sha256sum exploreos-image.tar.gz compose.yaml .env.example README.md SOURCE_COMMIT.txt IMAGE_ID.txt > SHA256SUMS
+  sha256sum exploreos-image.tar.gz compose.yaml .env.example README.md SOURCE_COMMIT.txt IMAGE_ID.txt exploreos.sh > SHA256SUMS
 )
 tar -czf "$PACKAGE_TEMP/product.tar.gz" -C "$PACKAGE_TEMP/bundle" .
 ln -- "$PACKAGE_TEMP/product.tar.gz" "$DESTINATION"

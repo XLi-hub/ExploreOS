@@ -4,7 +4,7 @@
 
 ## Docker Compose 安装
 
-也可以在 [产品容器检查](https://github.com/XLi-hub/ExploreOS/actions/workflows/product-container.yml) 的成功运行页下载 `exploreos-linux-amd64-*` 附件，解压其中的安装包，按内附 README 加载已验证镜像并启动。包包含启动配置、空的模型配置示例、源提交/镜像标识和 SHA-256 校验，不包含真实材料、数据库或密钥。Actions 附件保留 14 天；源码及下面的构建入口持续保留。安装包使用 `docker compose up --no-build -d`，无需获取 npm/Python 依赖。
+也可以在 [产品容器检查](https://github.com/XLi-hub/ExploreOS/actions/workflows/product-container.yml) 的成功运行页下载 `exploreos-linux-amd64-*` 附件，解压其中的安装包，按内附 README 加载已验证镜像并启动。包包含启动配置、空的模型配置示例、源提交/镜像标识、SHA-256 校验与 exploreos.sh 启停入口，不包含真实材料、数据库或密钥。Actions 附件保留 14 天；源码及下面的构建入口持续保留。安装包可运行 `bash exploreos.sh start` 完成校验、加载与就绪等待；`stop` 保留数据，`status` 检查服务，`login` 在私人终端显示实例令牌。底层仍使用 `docker compose up --no-build -d`，无需获取 npm/Python 依赖。
 
 主机需要 Git、Docker Engine 和 Compose。检出希望使用的提交，在仓库目录执行：
 
@@ -83,7 +83,7 @@ docker build --platform linux/amd64 --secret id=system_ca,src=/etc/ssl/certs/ca-
 docker compose up --no-build -d
 ~~~
 
-实际模型运行还需为容器配置可达的会话代理及只读 CA 信任，遵守环境网络策略；容器不能绕过目的域名限制。当前托管开发环境的 `api.deepseek.com` 仍未放行。普通 Linux 主机使用自身网络与 CA 配置。
+实际模型运行还需为容器配置可达的会话代理及只读 CA 信任，遵守环境网络策略；容器不能绕过目的域名限制。历史托管开发环境曾未放行 `api.deepseek.com`；实际以当前环境策略和真实请求结果为准。普通 Linux 主机使用自身网络与 CA 配置。
 
 ## 可复现的产品安装检查
 
