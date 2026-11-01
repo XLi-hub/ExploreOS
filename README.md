@@ -1,106 +1,137 @@
-# ExploreOS
+<div align="center">
 
-面向开放问题的多智能体持续探索系统：多个智能体提出方向、交换证据、相互质疑、根据新材料调整分工，并积累能够接续和修订的共同认识。
+# ✳ ExploreOS
 
-ExploreOS 关注问题如何越探越清楚、失败如何被后来者利用、用户改向后如何继续。产品、生活与工作方式、机制比较、创意、诊断和科研都可以是任务。核心定位与验收见 [产品核心](docs/product-core.md)。
+### 让问题越探越清楚。
 
-**状态：2026-10-28。已有探索 CLI、ClawInstitute 内探索视图、来源核查/记忆复查、固定对照评测、1–8 个身份、跨课题引用和有界唤醒。56 个两轮机械评测案例已通过；真实协作质量与长期运行仍待验收。证据见 [路线图工程验证](docs/roadmap-validation.md) 和 [M1 个案](docs/m1-validation.md)。**
+面向开放问题的多智能体探索工作空间。<br>
+从不同解释出发，用材料与质疑推进认识，把可继续的记忆留下来。
 
-验收可直接按 **[验收指南](docs/acceptance-guide.md)** 运行零付费示例，检查发现、质疑、方向变化与跨轮记忆。真实模型另行启用，不进入安装或 CI。
+[![Cloud checks](https://github.com/XLi-hub/ExploreOS/actions/workflows/cloud-bootstrap.yml/badge.svg?branch=main)](https://github.com/XLi-hub/ExploreOS/actions/workflows/cloud-bootstrap.yml)
+[![Product container](https://github.com/XLi-hub/ExploreOS/actions/workflows/product-container.yml/badge.svg?branch=main)](https://github.com/XLi-hub/ExploreOS/actions/workflows/product-container.yml)
+![Platform](https://img.shields.io/badge/Linux-amd64-738568)
+![Deployment](https://img.shields.io/badge/部署-自托管-396b4d)
 
-产品使用目标与实际交付缺口见 **[产品交付](docs/product-delivery.md)**。原生入口现以问题和阶段成果为主：自动生成项目代号、保存探索设置、下载可追溯的 Markdown 简报，并区分当前发现、旧问题记录和未生效回应。
+[快速开始](#快速开始) · [使用指南](docs/getting-started.md) · [安装与备份](docs/deployment.md) · [产品设计](docs/product-core.md) · [参与开发](CONTRIBUTING.md)
 
-日常安装可按 **[安装与持久运行](docs/deployment.md)** 使用 `docker compose up --build -d`，打开 `http://127.0.0.1:3001/api/v1/exploreos/ui`。数据库、课题与预算引用保存在命名卷，重建容器保留；默认不启动探索或付费计划。
+</div>
 
-也可从 [产品容器检查](https://github.com/XLi-hub/ExploreOS/actions/workflows/product-container.yml) 的成功运行下载预构建安装包，按内附 README 校验、加载镜像并启动。
+---
 
-正式 Release 尚未发布：真实质量、重复评测与长期部署仍待完成。发布草稿、验收条件及安装包永久附件流程见 [发布说明](docs/releasing.md)；开发 CI 全绿不能单独授权正式发布。
+**一个问题，多种可能。** ExploreOS 适合那些还没有标准答案、需要反复比较和修订的问题：产品机会、工作方式、机制分析、创意判断或研究设想。提出问题，添加材料，让具有独立上下文的参与者提出方向、互相质疑；检查发现与原文，补上反例，下一轮继续。
 
-云端配置从 **[CLOUD.md](CLOUD.md)** 开始：Python 3.11、Node 22、固定 AutoScientists 与 ClawInstitute 版本、安装入口和真实 API 检查。后续开发完全通过 GitHub 与云端进行。
+> **当前为产品预览，面向 Linux amd64 上的个人或单一可信使用者。** 已有原生界面、真实模型路径、预算与恢复控制、可校验安装包。正式稳定版仍受真实质量评阅、重复评测和长期部署验收约束；详见 [交付状态](docs/product-delivery.md) 与 [发布条件](docs/releasing.md)。零付费示例使用预设情景，有明确标记。
 
-安装并启动服务后，运行 `.venv/bin/python -m explore.workbench`，在运行机器打开 `http://127.0.0.1:3001/api/v1/exploreos/ui`，沿用 ClawInstitute 原登录。浏览器可以创建、导入材料、推进与追加有限轮次、改向/暂停、核对失败、关联其他课题发现和导出。真实模型执行需另行配置凭据与明确预算；默认仍是零付费机械演示。
+## 你会得到什么
 
-## 已确认的方向
-
-多智能体协同探索是产品核心，从首个可用版本开始验证。任务可以宽泛，不要求事先具备标准答案、数值指标、数据集或实验方案。
-
-阅读、检索、推理、比较、代码分析、数据分析、原型和实验，都可以成为探索手段。探索中允许产生新问题、修订解释、改变方向，并保留分歧。
-
-## 核心过程
-
-    用户提出开放问题与关注点
-                    ↓
-    多个具有独立上下文的智能体提出初始方向
-                    ↓
-    在共享探索空间发布提案、发现、质疑和反例
-                    ↓
-    智能体选择方向与行动，形成临时分工
-                    ↓
-    获取材料 / 推理 / 比较 / 分析 / 可选验证
-                    ↓
-    共享结果与失败，修订认识，分叉 / 合并 / 暂存 / 重开方向
-                    ↓
-    阶段简报与可继续的项目记录
-
-默认沿用 AutoScientists + ClawInstitute，在已有 workshop、workspace、讨论、心跳和共享记录上做开放任务适配。先验证上游链路，补齐必要缺口；不先重建协作服务或完整界面。研究方向由智能体交互形成，协调层管理调用与执行边界。详见[复用核对](docs/upstream-reuse.md)。
-
-## 首版必须证明什么
-
-- 至少三个具有独立会话与持久身份的智能体参与同一问题；初始视角可配置，分工可变。
-- 同伴的发现或质疑能实际改变后续行动，并能追溯到对应记录。
-- 至少保留两条可区分的探索路线；讨论能够留下未解决的分歧。
-- 在有理由时改变方向或分工，保留依据与历史。
-- 跨两轮接续，并在进程重启、用户改向、预算耗尽时维持准确状态。
-- 真实模型用于探索质量验收；模拟代理用于机械测试。
-- 单代理与独立多代理作为对照，与协作协议一起评估。
-
-可执行 CLI 示例默认采用模拟代理、本地材料、零付费预算。另有三个独立上下文的真实两轮案例，以及单代理、无交流多代理和协作多代理的初步对照；内容质量与长期收益仍需评阅。
-
-## 文档导航
-
-| 文档 | 内容 |
+| 能力 | 使用时的意义 |
 | --- | --- |
-| [验收指南](docs/acceptance-guide.md) | 安装、零付费示例、任意开放问题、改向与记忆检查 |
-| [M1 验证记录](docs/m1-validation.md) | 已实现能力、真实案例、排除样本与未验收边界 |
-| [真实探索链](docs/m1-case-study.md) | 同伴内容、材料、成员调整、记忆接续及共同误判的记录 ID |
-| [记忆复查](docs/memory-feedback.md) | 旧发现、质疑、新材料与后续行动怎样关联；零模型示例 |
-| [来源支持核查](docs/source-support.md) | 检查原文支持范围，记录署名判断、分歧与后续取回 |
-| [固定对照评测](docs/evaluation-pilot.md) | 八任务冻结包、四配置/三消融、重复运行、匿名评阅与报告 |
-| [探索工作台](docs/workbench.md) | 浏览器中的问题、方向、证据、认识变化和运行控制 |
-| [备份与恢复](docs/backup-restore.md) | 私有冷备、空实例恢复、预算保留与隔离验证 |
-| [有限持续运行](docs/daily-use.md) | 人数/并发、跨课题引用、唤醒、停用和恢复 |
-| [路线图工程验证](docs/roadmap-validation.md) | 已实现、已验证和仍待真实验收的边界 |
-| [插件前台委派](docs/subagent-integration.md) | 已接入的 subagent 路径、运行所有权、回执与恢复边界 |
-| [Pi 执行底座](docs/pi-runtime.md) | Pi 接入、真实兼容测试、subagent 插件能力与接入边界 |
-| [产品核心](docs/product-core.md) | 论文机制、与通用子代理团队的关系、记忆与持续探索的价值验收 |
-| [云端开发入口](CLOUD.md) | 可直接使用的环境准备说明、安装、服务与检查命令 |
-| [M0 验证记录](docs/m0-validation.md) | 调用链与所有权、并发复现/补丁、真实模型观察和 M1 改造清单 |
-| [产品设计](docs/product-design.md) | 多智能体探索的用户体验、交互与首版边界 |
-| [系统架构](docs/architecture.md) | 共享空间、心跳、协作协议、并发与恢复 |
-| [AutoScientists 机制迁移](docs/autoscientists-transfer.md) | 原论文依据、泛化方案和待核对实现 |
-| [上游复用核对](docs/upstream-reuse.md) | AutoScientists + ClawInstitute 的源码依据、可用能力和已知缺口 |
-| [类似项目调研](docs/research-landscape.md) | 机制参考与运行底座的不同职责 |
-| [评测设计](docs/evaluation.md) | 协作收益、消融、成本和开放问题评价 |
-| [实施路线与验收](docs/roadmap.md) | 从机制核对到最小多智能体探索系统 |
-| [开发协作方式](docs/development-workflow.md) | 双账号、任务 worktree、集成评审与云端接入时机 |
-| [当前复用决策](docs/decisions/0003-upstream-first.md) | 默认沿用 AutoScientists + ClawInstitute，优先局部适配 |
-| [产品核心决策](docs/decisions/0002-multi-agent-exploration.md) | 多智能体成为核心、取代旧版产品顺序 |
-| [旧版决策](docs/decisions/0001-local-research-workbench.md) | 已被 ADR 0002 取代，保留历史 |
-| [配置示例](examples/project.example.json) | v0.2 接口提案，尚不可执行 |
-| [开发协作约定](AGENTS.md) | 后续开发与验证规则 |
+| **多条探索路线** | 默认三个独立上下文；参与者可以提出竞争解释，并基于记录调整方向或分工。 |
+| **可以检查的发现** | 主张保留作者、问题版本、原文行号、材料指纹与质疑，不把同伴一致当作事实。 |
+| **留住分歧** | 反例、未答问题、撤回与修订继续可见；旧关注点下的结论进入历史。 |
+| **接着上次继续** | 关闭页面、重启服务后读取原记录；补材料、改向或追加有限轮次。 |
+| **有条件的记忆** | 跨课题引用保留出处与适用条件，取回时重新检查来源状态。 |
+| **可控的运行** | 模型预算跨项目共享；暂停停止新派发，未知请求保留额度并先核对。 |
+| **可带走的成果** | 下载 Markdown 阶段简报，或导出含原始记录的 JSON；导出无需模型。 |
 
-## 当前进度
+界面提供浅色与深色外观、问题模板、零付费示例、来源材料计数和键盘导航。浏览器使用预览随 [cloud checks 的成功运行](https://github.com/XLi-hub/ExploreOS/actions/workflows/cloud-bootstrap.yml) 保存为 `exploreos-browser-previews-*` 附件。
 
-- [x] 连接 GitHub，当前开发与交付全部在云端。
-- [x] 确认宽泛开放问题与多智能体协同探索的核心定位。
-- [x] 阅读 AutoScientists 论文相关方法、实验、消融和实现附录，修订设计。
-- [x] 完成 M0 的 Linux 服务、调用链核对、并发修补与有界真实互读，限制见验证记录。
-- [x] 实现 M1 候选，通过机械检查并完成有界真实案例。
-- [x] 接入 Pi 执行库，补齐课题记忆的复查/修订与同伴质疑协议。
-- [x] 交付ClawInstitute 内探索视图、固定评测驱动、跨课题引用与有界唤醒，完成机械与浏览器检查。
-- [ ] 用户验收 M1 的来源支持、分歧、行动变化与开放任务价值。
-- [ ] 用固定材料与真实问题评估协作收益。
+## 快速开始
 
-《日常探索模式》的原始会话正文仍未读取。本次方向依据当前聊天中用户明确的需求，以及用户提供的 ExploreOS HTML 方案；不推断原会话的额外要求。
+### 使用预构建安装包
 
-产品、自有软件和当前 GitHub 仓库均名为 ExploreOS，远端为 `XLi-hub/ExploreOS`。此前文档中的旧仓库名属于改名前记录。
+1. 打开 [产品构建](https://github.com/XLi-hub/ExploreOS/actions/workflows/product-container.yml)，选择 **main 分支的成功运行**，在 Artifacts 下载 `exploreos-linux-amd64-*`。
+2. 解压下载的 ZIP，再解开其中的 `exploreos-linux-amd64.tar.gz`。
+3. 在解压目录运行：
+
+~~~bash
+bash exploreos.sh start
+~~~
+
+需要 Docker Engine 与 Docker Compose v2。启动脚本校验包内容，加载与包内标识一致的镜像，创建私有配置，再等待服务就绪；不会启动探索或调用模型。Actions 附件通常需要登录 GitHub，保留 14 天。
+
+打开 **http://127.0.0.1:3001/api/v1/exploreos/ui**。在安装主机的私人终端读取实例登录令牌：
+
+~~~bash
+bash exploreos.sh login
+~~~
+
+粘贴到页面链接指向的 ClawInstitute 原登录页，回到 ExploreOS 即可使用。登录令牌与模型 API 密钥用途不同。
+
+### 从源码安装
+
+~~~bash
+git clone https://github.com/XLi-hub/ExploreOS.git
+cd ExploreOS
+cp .env.example .env
+chmod 600 .env
+docker compose up --build -d --wait --wait-timeout 180
+~~~
+
+同样打开上面的地址。源码安装读取登录令牌：
+
+~~~bash
+docker compose exec -T exploreos cat .runtime/service/home/token
+~~~
+
+服务器通过 [SSH 私有访问](docs/deployment.md)；源码开发环境见 [CLOUD.md](CLOUD.md)。
+
+## 第一次探索
+
+**先体验流程：** 点击「使用指南 → 打开零付费示例」，创建后已有一份访谈片段。点击「推进一轮」，检查「阶段成果」「发现与分歧」和「来源材料」；然后修改关注点，继续下一轮。示例结果来自预设情景，不是真实模型的研究结论。
+
+**开始自己的问题：**
+
+1. 新建探索，写下你想弄清楚的问题。可直接修改首页的示例问题。
+2. 添加笔记、访谈或原文片段。每份最多 80 行 / 12,000 UTF-8 字节，界面显示用量，超出会拒绝保存。
+3. 选择执行方式并明确推进一轮。没有材料时只做推理，发现会保留这一限制。
+4. 查看不同路线、原文与未决质疑；需要时补材料、修改关注点，再继续。
+5. 下载阶段简报，或在运行控制中导出全部记录。
+
+启用真实探索：在安装主机的私有 `.env` 设置 `DEEPSEEK_API_KEY`，重新执行 `docker compose up --no-build -d`，再在界面选择真实探索和明确的共享预算。源码安装先按上述构建步骤生成镜像。密钥只交给服务端，不填入浏览器或提交到仓库。
+
+支持的主执行路径是 **Pi + DeepSeek**；Pi 前台子代理与历史 Claude 路径为高级选项。界面中的配置状态不代替实际供应商连通验证。真实与演示项目分别保存，运行后不混换后端。
+
+## 日常使用
+
+~~~bash
+bash exploreos.sh status  # 服务与界面健康状态，不调用模型
+bash exploreos.sh stop    # 优雅停止，保留卷
+bash exploreos.sh start   # 重新打开已有数据，不自动推进探索
+bash exploreos.sh verify  # 仅检查安装包完整性
+~~~
+
+以上脚本位于预构建安装包。源码安装使用 `docker compose stop` / `docker compose up -d`。
+
+数据保存在命名卷中；升级先做私有冷备。服务健康不代表探索质量或供应商可用。备份归档包含私人材料与实例登录令牌，应另存受控位置；不要对需要保留的实例执行 `down --volumes`。详见 [部署](docs/deployment.md)、[备份恢复](docs/backup-restore.md) 和 [常见问题](docs/faq.md)。
+
+## 它怎样工作
+
+~~~mermaid
+flowchart LR
+    Q[问题与关注点] --> A[独立视角提出方向]
+    A --> S[共享提案、发现与质疑]
+    S --> C[查材料、检验解释]
+    C --> M[带出处和限制的记忆]
+    M --> N[阶段成果与下一轮]
+    N --> S
+~~~
+
+ExploreOS 复用 **AutoScientists 的任务/身份布局、ClawInstitute 的共享内容与认证、Pi 的模型执行能力**。原生探索界面直接扩展现有 ClawInstitute API；共享内容只有一套权威存储。确定性控制层管理预算、认领和恢复，参与者提出研究方向。
+
+协作是否比单代理更有用，仍需在同材料和预算下评估；现有配置对照与消融入口见 [评测说明](docs/evaluation-pilot.md)。运行成功、影响链接和报告长度不能单独证明质量收益。
+
+## 文档
+
+| 从这里开始 | 深入使用与开发 |
+| --- | --- |
+| [第一次使用](docs/getting-started.md) | [架构与状态所有权](docs/architecture.md) |
+| [安装与持久运行](docs/deployment.md) | [上游复用与边界](docs/upstream-reuse.md) |
+| [探索工作台](docs/workbench.md) | [来源支持核查](docs/source-support.md) |
+| [常见问题](docs/faq.md) | [记忆复查](docs/memory-feedback.md) |
+| [备份与恢复](docs/backup-restore.md) | [固定对照评测](docs/evaluation-pilot.md) |
+| [验收指南](docs/acceptance-guide.md) | [真实案例与限制](docs/m1-validation.md) |
+| [更新记录](CHANGELOG.md) | [路线图](docs/roadmap.md) |
+| [发布条件](docs/releasing.md) | [开发环境](CLOUD.md) |
+
+欢迎提交可复现问题和有材料依据的改进建议。开始前阅读 [贡献指南](CONTRIBUTING.md)，报告问题时移除 API 密钥、登录令牌与私人材料。
