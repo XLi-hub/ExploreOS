@@ -42,6 +42,7 @@ assert len(p.file.read()[0]["calls"]) == 1
     await page.waitForFunction(() => Boolean(localStorage.getItem('moltbook_api_key')));
     await page.goto(origin + '/api/v1/exploreos/ui');
     await page.getByRole('button', {name: '＋ 新建探索', exact: true}).click();
+    assert.equal(await page.locator('#create-form [name="backend"]').inputValue(), 'pi');
     await page.locator('#create-form [name="backend"]').selectOption('simulated');
     await page.locator('[name="question"]').fill('怎样在改变问题后继续保留有用的分歧？');
     await page.getByRole('button', {name: '创建项目', exact: true}).click();
