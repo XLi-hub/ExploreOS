@@ -33,7 +33,7 @@ if(tab==="memory"){const top=node("div",undefined,"inline-controls"),add=node("b
 if(tab==="execution"){const a=card("调用与执行状态"),reconcile=node("button","核对中断执行");reconcile.onclick=()=>control("reconcile");a.append(node("p","调用完成、同伴赞同和引文匹配都不等于主张已经成立。","subtle"),node("p",`已使用 ${snapshot.rounds.length} / ${snapshot.max_rounds} 轮；追加轮次不会增加模型总预算。`,"small"),reconcile);for(const call of snapshot.calls){const row=node("div");row.append(node("p",`${call.actor} · ${call.phase} · ${label(call.status)} · 第 ${call.round} 轮`));if(["failed","failed_before_dispatch","invalid_output"].includes(call.status)){const retry=node("button","授权修正后重试");retry.onclick=async()=>{const reason=prompt("说明已做的修正或这次重试的理由。授权后不会立刻调用模型，请核对状态再推进。");if(reason)await control("retry",{slot:call.slot,call_id:call.id,reason})};row.append(retry)}if(call.status==="unknown")row.append(node("p","结果未知：先核对原请求，额度保留，不自动重发。","small"));a.append(row)}if(snapshot.retired_calls?.length)a.append(details("历史失败尝试（已保留）",snapshot.retired_calls));a.append(details("执行观察",snapshot.observation||{}));out.append(a)}
 }
 async function auditFinding(id,container){try{const audit=await api(`/api/project/${selected}/audit/${id}`);const el=details("核查原始依据",audit.basis);el.open=true;container.append(el);const save=node("button","保存这次来源核查");container.append(save);save.onclick=async()=>{try{const verdict=prompt("来源支持判断：supports / partial / unsupported / uncertain","uncertain");if(!verdict)return;const scope=prompt("原文支持到哪里，尚不支持什么？");if(!scope)return;const reason=prompt("核查理由");if(!reason)return;await control("assess",{post_id:id,basis_sha256:audit.basis_sha256,verdict,scope,reason,reviewer:"user",assessment_id:crypto.randomUUID()})}catch(error){note(error.message)}}}catch(error){note(error.message)}}
-async function control(action,data={}){if(controlling||!snapshot||snapshot.name!==selected)return false;const target=selected;controlling=true;updateControls();note("正在保存…");try{await api(`/api/project/${target}/${action}`,data);await load();if(selected!==target)return true;note(action==="advance"?"已提交推进请求；实际进度以项目状态为准。":action==="report"?"已提交综合报告请求；报告使用已保存发现，实际进度以项目状态为准。":"已保存");return true}catch(error){note(error.message);return false}finally{controlling=false;updateControls()}}
+async function control(action,data={}){if(controlling||!snapshot||snapshot.name!==selected)return false;if(["advance","report"].includes(action)&&providerUnavailable()){renderProviderStatus();note("请先完成真实模型配置，再开始执行。");return false}const target=selected;controlling=true;updateControls();note("正在保存…");try{await api(`/api/project/${target}/${action}`,data);await load();if(selected!==target)return true;note(action==="advance"?"已提交推进请求；实际进度以项目状态为准。":action==="report"?"已提交综合报告请求；报告使用已保存发现，实际进度以项目状态为准。":"已保存");return true}catch(error){note(error.message);return false}finally{controlling=false;updateControls()}}
 for(const b of document.querySelectorAll("[data-tab]"))b.onclick=()=>{tab=b.dataset.tab;selectTab();render()};
 for(const b of document.querySelectorAll("[data-action]"))b.onclick=async()=>{
   const action=b.dataset.action;
@@ -257,12 +257,14 @@ function renderStageReport(out){
 
 function providerUnavailable(){
   const backend=snapshot?.native_execution?.backend;
-  if(!backend||backend==="simulated"||!runtimeInfo)return false;
+  if(!backend||backend==="simulated")return false;
+  if(!runtimeInfo)return true;
   return runtimeInfo.credential!=="configured"||(backend==="pi"&&!runtimeInfo.pi_ready)||runtimeInfo.network==="not_allowed_at_startup";
 }
 function renderProviderStatus(){
   const el=$("provider-status");el.hidden=!providerUnavailable();
   if(el.hidden)return;
+  if(!runtimeInfo){el.textContent="暂时无法读取真实模型配置。请刷新确认；问题和材料仍可保存。";return;}
   const messages=["真实探索尚未就绪。问题和材料可以保存，执行前请完成模型配置。"];
   if(runtimeInfo.credential!=="configured")messages.push("在安装主机的私有 .env 配置 DEEPSEEK_API_KEY，运行 docker compose up --no-build -d，然后刷新。模型密钥不填入登录页。");
   if(snapshot.native_execution?.backend==="pi"&&!runtimeInfo.pi_ready)messages.push("Pi 执行依赖尚未就绪；源码安装请运行 bash scripts/cloud/setup_pi.sh。");
