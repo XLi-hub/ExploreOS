@@ -421,7 +421,8 @@ class Project:
         if state["mode"] == "collaborative":
             for call in state["calls"].values():
                 if call["actor"] == actor and call["status"] == "completed":
-                    previously_read.update(p["id"] for p in call.get("request", {}).get("peers", []))
+                    previously_read.update(p["id"] for p in call.get("request", {}).get("peers", [])
+                                           if p.get("actor") != actor)
         else:
             previously_read.clear()
         recalled_links = {link for note in memory.get("recalled_notes", []) for link in note.get("peer_posts", [])}
@@ -659,7 +660,8 @@ class Project:
                                    "question_revision": request["question_revision"]})
             state["agents"][actor]["cursor"] = max(state["agents"][actor]["cursor"], request.get("index_cursor", 0))
             state["agents"][actor]["read_posts"] = sorted(set(state["agents"][actor].get("read_posts", [])) |
-                {post["id"] for post in request["peers"]} | set(request.get("previously_read_peer_ids", [])))
+                {post["id"] for post in request["peers"] if post.get("actor") != actor} |
+                set(request.get("previously_read_peer_ids", [])))
             state["agents"][actor]["read_posts"] = sorted(set(state["agents"][actor]["read_posts"]) | set(request.get("contribution_views", {})))
             if phase == "propose" and state["agents"][actor]["direction"] is None:
                 direction_id = "direction:" + actor
