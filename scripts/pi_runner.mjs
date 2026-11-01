@@ -23,6 +23,8 @@ for await (const chunk of process.stdin) {
   if (Buffer.byteLength(input) > 100_000) throw new Error('Bounded invocation input exceeded');
 }
 const request = JSON.parse(input);
+const outputTokens = request.max_output_tokens ?? 900;
+if (![900, 3072, 4096].includes(outputTokens)) throw new Error("Unsupported owned output allowance");
 const endpoint = new URL(request.base_url);
 if (endpoint.protocol !== 'http:' || endpoint.hostname !== '127.0.0.1') {
   throw new Error('Pi may only contact the controller-owned loopback relay');
@@ -30,7 +32,7 @@ if (endpoint.protocol !== 'http:' || endpoint.hostname !== '127.0.0.1') {
 const model = {
   id: 'deepseek-flash', name: 'ExploreOS authorized model', api: 'anthropic-messages',
   provider: 'exploreos-local-relay', baseUrl: endpoint.href,
-  reasoning: false, input: ['text'], contextWindow: 32_000, maxTokens: 900,
+  reasoning: false, input: ['text'], contextWindow: 32_000, maxTokens: outputTokens,
   // Supplier usage/cost authority is the shared relay ledger, not this display estimate.
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 };
@@ -45,7 +47,7 @@ const agent = new Agent({
   streamFn: (selected, context, options) => {
     if (++requests > 1) throw new Error('One provider request per invocation; no autonomous retries or follow-up turns');
     return streamAnthropic(selected, context, {
-      ...options, apiKey: request.gateway_token, maxTokens: 900, thinkingEnabled: false,
+      ...options, apiKey: request.gateway_token, maxTokens: outputTokens, thinkingEnabled: false,
       cacheRetention: 'none', maxRetries: 0, timeoutMs: 60_000,
     });
   },
