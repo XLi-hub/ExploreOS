@@ -2,11 +2,14 @@ name: ExploreOS product container
 on:
   push:
     branches: [main, 'codex/**']
-    paths: ['Dockerfile', '.dockerignore', 'compose.yaml', 'scripts/**', 'explore/**', 'cloud/**', 'examples/**', '.github/workflows/product-container.yml', '.github/workflows/release.yml', '.release/**', 'docs/releases/**']
+    paths: ['Dockerfile', '.dockerignore', 'compose.yaml', 'scripts/**', 'explore/**', 'cloud/**', 'examples/**', '.github/workflows/product-container.yml', '.github/workflows/release.yml', '.release/**', 'docs/releases/**', 'docs/prebuilt-install.md']
   pull_request:
     paths: ['Dockerfile', '.dockerignore', 'compose.yaml', 'scripts/**', 'explore/**', 'cloud/**', 'examples/**', '.github/workflows/product-container.yml', '.github/workflows/release.yml', '.release/**', 'docs/releases/**']
 permissions:
   contents: read
+concurrency:
+  group: product-container-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   product-installation:
     runs-on: ubuntu-24.04
@@ -27,11 +30,10 @@ jobs:
           mkdir .runtime/package-check
           tar -xzf .runtime/distribution/exploreos-linux-amd64.tar.gz -C .runtime/package-check
           cd .runtime/package-check
-          sha256sum -c SHA256SUMS
-          docker load -i exploreos-image.tar.gz
+          bash exploreos.sh verify
           trap 'docker compose -p exploreos-package-check down --volumes' EXIT
-          docker compose -p exploreos-package-check up --no-build -d --wait --wait-timeout 120
-          docker compose -p exploreos-package-check exec -T exploreos .venv/bin/python scripts/cloud/product.py health
+          COMPOSE_PROJECT_NAME=exploreos-package-check bash exploreos.sh start
+          COMPOSE_PROJECT_NAME=exploreos-package-check bash exploreos.sh status
           curl --noproxy '*' --fail --silent --output /dev/null http://127.0.0.1:3001/api/v1/exploreos/ui
       - name: Retain installable product bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
