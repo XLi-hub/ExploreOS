@@ -466,6 +466,11 @@ class Project:
             if not semantic_policy["direction_changes"]:
                 request["contract"]["change"] = "null；本次固定方向与成员，保留讨论和发现但不应用重组"
         request["instructions"] = "严格输出JSON对象，键与contract一致，每个文字字段最多100字。视角提示可自行拒绝或修订，不是固定研究分工。不得编造来源或同伴ID，不用多数同意代替证据。方向与分工由你根据证据判断，程序不要求必定改向。source_assessments为署名的来源支持判断，不是新证据或事实认证；检查其范围、问题版本及分歧。"
+        if (state.get("native_execution", {}).get("backend") in REAL_BACKENDS
+                and not state.get("evaluation_binding") and phase == "reflect"):
+            request["response_profile"] = "product"
+            request["instructions"] = request["instructions"].replace(
+                "每个文字字段最多100字", "finding可用500字展开依据与推理，summary最多150字，unresolved最多250字，其他文字字段最多100字")
         omitted = {"peers": 0, "shared_memory": 0, "private_notes": 0, "review_candidates": 0, "cross_project_memory": 0,
                    "review_challenges": 0}
         request["context_omissions"] = omitted
