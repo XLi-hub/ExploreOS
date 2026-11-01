@@ -59,6 +59,10 @@ assert len(p.file.read()[0]["calls"]) == 1
     await page.getByRole('tab', {name: '发现与分歧', exact: true}).click();
     await page.getByRole('button', {name: '推进一轮', exact: true}).click();
     await page.waitForFunction(() => document.querySelectorAll('#content article').length === 3);
+    await page.getByRole('button', {name: '生成综合报告', exact: true}).click();
+    await page.getByRole('heading', {name: '机械演示报告 · 用于检查成果流程', exact: true}).waitFor();
+    await page.getByRole('button', {name: '核对依据', exact: true}).first().click();
+    await page.waitForFunction(() => document.querySelectorAll('#content article').length === 3);
     await page.locator('.project-controls summary').click();
     await page.getByRole('button', {name: '暂停', exact: true}).click();
     await page.waitForFunction(() => document.querySelector('#meta').textContent.includes('已暂停'));
