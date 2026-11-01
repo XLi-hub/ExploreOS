@@ -141,7 +141,7 @@ assert len(p.file.read()[0]["calls"]) == 1
     await page.locator('#execution-form [type="submit"]').click();
     await page.getByRole('tab', {name: '发现与分歧', exact: true}).click();
     await page.waitForFunction(() => document.querySelectorAll('#content article').length === 1);
-    
+
     // Exercise the guided example from an existing workspace as well as theme persistence.
     await page.getByRole('button', {name: '使用指南', exact: true}).click();
     await page.getByRole('heading', {name: '从好问题，到有依据的下一步。', exact: true}).waitFor();
