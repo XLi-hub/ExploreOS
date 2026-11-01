@@ -1107,6 +1107,11 @@ class Project:
             lines.extend([f"- {assessment['target_post']}；{assessment['reviewer']}：{assessment['verdict']}（问题 v{assessment['question_revision']}）",
                           f"  - 范围：{assessment['scope']}；理由：{assessment['reason']}；记录：{assessment['id']}",
                           f"  - 核查依据：{assessment['basis_sha256']}；判断不自动验证主张或消除异议。"])
+        for item in posts:
+            if item["phase"] == "report":
+                content = json.loads(item["post"]["content"])
+                lines.extend(["", reports.markdown(content, current=(
+                    content.get("report_basis_sha256") == reports.fingerprint(state)))])
         lines.extend(["", "## 运行与变更", "", f"已完成调用：{sum(c['status']=='completed' for c in state['calls'].values())}/{len(state['calls'])}",
                       f"已应用方向/成员变更：{len(state['direction_history'])}；待确认：{sum(c['status']=='pending' for c in state['changes'].values())}；过期未生效：{sum(c['status']=='stale' for c in state['changes'].values())}",
                       f"保留的历史失败尝试：{len(state.get('retired_calls',{}))}；重试仍计入调用限额与费用预留。",
