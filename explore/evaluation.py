@@ -34,7 +34,7 @@ DIMENSIONS = ("question_clarity", "explanation_coverage", "counterexamples", "ev
 def runtime_manifest():
     paths = ["explore/engine.py", "explore/models.py", "explore/memory.py", "explore/reviews.py",
              "explore/store.py", "explore/policy.py", "explore/bootstrap.py", "explore/cross_memory.py",
-             "explore/subagents.py", "explore/evaluation.py", "scripts/pi_runner.mjs", "scripts/subagents_runner.mjs",
+             "explore/subagents.py", "explore/reports.py", "explore/evaluation.py", "scripts/pi_runner.mjs", "scripts/subagents_runner.mjs",
              "cloud/versions.json", "cloud/package-lock.json", "cloud/pi/package-lock.json", "cloud/subagents/package-lock.json"]
     paths += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "cloud/patches").glob("*")) if p.is_file()]
     return {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in paths}
