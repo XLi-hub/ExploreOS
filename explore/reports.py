@@ -127,3 +127,27 @@ def fixture(context):
                         "reason": "报告需要可检查的依据。", "basis": refs[:1]}],
         "unknowns": ["真实问题上的内容质量仍需独立验证。"],
     }
+
+
+def markdown(content, *, current=True):
+    lines = ["## " + content["title"], "",
+             "状态：" + ("当前输入下的综合判断" if current else "历史报告：输入或认识状态已有变化，沿用前复查"),
+             "综合报告不是独立外部证据；下列引用回到原始发现。", "", content["overview"], "",
+             "### 阶段判断", ""]
+    for item in content["conclusions"]:
+        lines.extend(["- " + item["claim"], "  - 限制：" + item["caveat"],
+                      "  - 依据：" + "、".join(item["basis"])])
+    lines.extend(["", "### 竞争解释与分歧", ""])
+    for item in content["disagreements"]:
+        lines.extend(["- " + item["issue"], "  - 影响：" + item["implication"],
+                      "  - 依据：" + "、".join(item["basis"])])
+    lines.extend(["", "### 建议的下一步", ""])
+    for item in content["next_steps"]:
+        lines.extend(["- " + item["action"], "  - 理由：" + item["reason"],
+                      "  - 依据：" + "、".join(item["basis"])])
+    lines.extend(["", "### 仍待弄清楚", ""])
+    lines.extend("- " + value for value in content["unknowns"])
+    lines.append("\n覆盖发现：" + "、".join(content["included_finding_ids"]))
+    if content.get("omitted_finding_ids"):
+        lines.append("未纳入本次上下文的发现：" + "、".join(content["omitted_finding_ids"]))
+    return "\n".join(lines) + "\n"
