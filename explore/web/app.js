@@ -2,7 +2,7 @@
 const API="/api/v1/exploreos";
 let selected=null,tab="brief",snapshot=null,refreshing=false,controlling=false,projectIndex=[],runtimeInfo=null,executionIntent=false,controlIntent=null,starterIntent=null;
 const $=id=>document.getElementById(id);
-const words={recorded:"已记录",stale:"过期未生效",inference:"推断",hypothesis:"假设",fact:"事实主张（待核查）",analogy:"类比",idea:"构想",retain:"保留",revise:"修订",withdraw:"撤回",uncertain:"暂不判断",incomplete_execution_case:"执行记录待核对",starting:"准备中",running:"执行中",failed:"执行失败",failed_before_dispatch:"派发前失败",invalid_output:"输出需修正",unknown:"结果待核对",received:"已收到，待核对",cancelling:"正在取消",cancelled:"已取消",timed_out:"已超时",unavailable:"来源暂不可读",changed_or_unavailable:"来源已变化或不可读",active:"可继续",paused:"已暂停",blocked:"需要核对",completed:"已完成",provisional:"暂定",contested:"有争议",superseded:"已修订",withdrawn:"已撤回",simulated:"机械演示",single:"单代理",independent:"独立多代理",collaborative:"协作多代理",multiple_perspectives:"单代理多角度",not_run:"尚未运行",mechanical_fixture:"机械演示",real_model_execution:"真实模型执行记录"};
+const words={report:"综合报告",recorded:"已记录",stale:"过期未生效",inference:"推断",hypothesis:"假设",fact:"事实主张（待核查）",analogy:"类比",idea:"构想",retain:"保留",revise:"修订",withdraw:"撤回",uncertain:"暂不判断",incomplete_execution_case:"执行记录待核对",starting:"准备中",running:"执行中",failed:"执行失败",failed_before_dispatch:"派发前失败",invalid_output:"输出需修正",unknown:"结果待核对",received:"已收到，待核对",cancelling:"正在取消",cancelled:"已取消",timed_out:"已超时",unavailable:"来源暂不可读",changed_or_unavailable:"来源已变化或不可读",active:"可继续",paused:"已暂停",blocked:"需要核对",completed:"已完成",provisional:"暂定",contested:"有争议",superseded:"已修订",withdrawn:"已撤回",simulated:"机械演示",single:"单代理",independent:"独立多代理",collaborative:"协作多代理",multiple_perspectives:"单代理多角度",not_run:"尚未运行",mechanical_fixture:"机械演示",real_model_execution:"真实模型执行记录"};
 const label=x=>words[x]||x;
 function node(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
 function note(text){$("message").textContent=text||""}
@@ -24,7 +24,7 @@ function renderProjects(){
 async function projects(){const data=await api("/api/projects");projectIndex=data.projects;renderProjects();if(!selected&&projectIndex.length){const last=localStorage.getItem("exploreos_last_project");selected=projectIndex.some(p=>p.name===last)?last:projectIndex[0].name;location.hash=selected;await load()}}
 async function load(){if(!selected)return;updateControls();if(refreshing)return;refreshing=true;$("workspace").setAttribute("aria-busy","true");updateControls();const requested=selected;try{const received=await api(`/api/project/${requested}/state`);if(selected!==requested)return;snapshot=received;connectionStatus(true);$("native-discussion").href=snapshot.native_workspace_url;$("native-discussion").hidden=false;$("native-files").href=snapshot.native_files_url;$("native-files").hidden=false;$("empty").hidden=true;$("workspace").hidden=false;$("title").textContent="探索成果";localStorage.setItem("exploreos_last_project",selected);$("question").textContent=snapshot.question_revisions.at(-1).text;$("meta").textContent=`${label(snapshot.mode)} · ${label(snapshot.status)} · ${snapshot.rounds.length}/${snapshot.max_rounds} 轮 · ${snapshot.participant_count} 人 · ${label(snapshot.record_kind)} · 记录版本 ${snapshot.version}`;updateControls();if(snapshot.observation)note(snapshot.observation.detail);else if(snapshot.continuation_required)note("项目索引已达到容量边界。请导出记录，再通过带条件的记忆引用建立接续课题；原始记录完整保留。");render();renderOverview();updateControls();renderProgress();const index=projectIndex.findIndex(p=>p.name===snapshot.name),entry={name:snapshot.name,question:snapshot.question_revisions.at(-1).text,status:snapshot.status,mode:snapshot.mode,rounds:snapshot.rounds.length};if(index<0)projectIndex.unshift(entry);else projectIndex[index]={...projectIndex[index],...entry};renderProjects()}catch(error){connectionStatus(false);note(error.message)}finally{refreshing=false;$("workspace").setAttribute("aria-busy","false");updateControls();if(selected!==requested)load()}}
 function render(){const out=$("content");out.replaceChildren();if(!snapshot)return;
-if(tab==="brief")renderBrief(out);
+if(tab==="brief"){renderStageReport(out);renderBrief(out);}
 if(tab==="findings"){const findings=snapshot.posts.filter(p=>p.phase==="reflect");if(!findings.length)out.append(node("p","尚无发现。推进一轮后，这里会保留发现、来源和未决问题。","subtle"));for(const p of findings){const k=(snapshot.knowledge||{})[p.id]||{},c=p.content,a=card();a.id="finding-"+p.id;a.append(tagNode(k.status||"provisional",k.status==="contested"),tagNode(`第 ${p.round} 轮 · 问题 v${p.question_revision}`),node("h3",c.finding));if(c.evidence)a.append(node("p",`${c.evidence.source_id} · 原文第 ${c.evidence.original_line||c.evidence.line} 行：${c.evidence.quote}`,"citation"));else a.append(node("p","此步只做推理，没有外部材料支持。","citation"));a.append(node("p","未决："+c.unresolved));for(const ch of k.challenges||[])a.append(node("p","质疑："+ch.reason+(ch.author_responses?.length?"（已有署名回应，异议仍保留）":"（尚无作者回应）")));for(const r of Object.values(snapshot.source_assessments||{}).filter(r=>r.target_post===p.id))a.append(node("p",`${r.reviewer} · ${r.verdict}：${r.reason}；范围：${r.scope}`,"small"));a.append(details("贡献与复查记录",{post_id:p.id,influenced_by:c.influenced_by,review:c.review,revisit_when:c.revisit_when}));const buttons=node("div",undefined,"actions"),audit=node("button","查看原文并核查"),challenge=node("button","提出质疑");audit.onclick=()=>auditFinding(p.id,a);challenge.onclick=async()=>{const reason=prompt("指出这条主张的具体问题");if(reason)await control("challenge",{post_id:p.id,reason})};buttons.append(audit,challenge);a.append(buttons);out.append(a)}}
 if(tab==="directions"){for(const d of Object.values(snapshot.directions||{})){const a=card(d.title);a.append(tagNode(d.status),node("p","当前成员："+(d.members.join("、")||"暂时没有成员")),node("p","版本 "+d.version,"small"));a.append(details("形成依据",{proposal_post:d.proposal_post,id:d.id}));out.append(a)}out.append(details("方向变化前后与确认记录",{history:snapshot.direction_history,pending:snapshot.changes}))}
 if(tab==="history"){const q=card("问题如何变化");for(const v of snapshot.question_revisions)q.append(node("p",`v${v.number} · ${v.author}：${v.text}`));out.append(q);for(const r of snapshot.reviews||[]){const a=card(label(r.decision)+" · "+label(r.status));a.append(node("p",r.reason),node("p",`原发现 ${r.target_post} → 回应 ${r.response_post}`,"small"),details("实际取回与回应依据",r));out.append(a)}out.append(details("事件时间线",snapshot.events))}
@@ -33,11 +33,16 @@ if(tab==="memory"){const top=node("div",undefined,"inline-controls"),add=node("b
 if(tab==="execution"){const a=card("调用与执行状态"),reconcile=node("button","核对中断执行");reconcile.onclick=()=>control("reconcile");a.append(node("p","调用完成、同伴赞同和引文匹配都不等于主张已经成立。","subtle"),node("p",`已使用 ${snapshot.rounds.length} / ${snapshot.max_rounds} 轮；追加轮次不会增加模型总预算。`,"small"),reconcile);for(const call of snapshot.calls){const row=node("div");row.append(node("p",`${call.actor} · ${call.phase} · ${label(call.status)} · 第 ${call.round} 轮`));if(["failed","failed_before_dispatch","invalid_output"].includes(call.status)){const retry=node("button","授权修正后重试");retry.onclick=async()=>{const reason=prompt("说明已做的修正或这次重试的理由。授权后不会立刻调用模型，请核对状态再推进。");if(reason)await control("retry",{slot:call.slot,call_id:call.id,reason})};row.append(retry)}if(call.status==="unknown")row.append(node("p","结果未知：先核对原请求，额度保留，不自动重发。","small"));a.append(row)}if(snapshot.retired_calls?.length)a.append(details("历史失败尝试（已保留）",snapshot.retired_calls));a.append(details("执行观察",snapshot.observation||{}));out.append(a)}
 }
 async function auditFinding(id,container){try{const audit=await api(`/api/project/${selected}/audit/${id}`);const el=details("核查原始依据",audit.basis);el.open=true;container.append(el);const save=node("button","保存这次来源核查");container.append(save);save.onclick=async()=>{try{const verdict=prompt("来源支持判断：supports / partial / unsupported / uncertain","uncertain");if(!verdict)return;const scope=prompt("原文支持到哪里，尚不支持什么？");if(!scope)return;const reason=prompt("核查理由");if(!reason)return;await control("assess",{post_id:id,basis_sha256:audit.basis_sha256,verdict,scope,reason,reviewer:"user",assessment_id:crypto.randomUUID()})}catch(error){note(error.message)}}}catch(error){note(error.message)}}
-async function control(action,data={}){if(controlling||!snapshot||snapshot.name!==selected)return false;const target=selected;controlling=true;updateControls();note("正在保存…");try{await api(`/api/project/${target}/${action}`,data);await load();if(selected!==target)return true;note(action==="advance"?"已提交推进请求；实际进度以项目状态为准。":"已保存");return true}catch(error){note(error.message);return false}finally{controlling=false;updateControls()}}
+async function control(action,data={}){if(controlling||!snapshot||snapshot.name!==selected)return false;const target=selected;controlling=true;updateControls();note("正在保存…");try{await api(`/api/project/${target}/${action}`,data);await load();if(selected!==target)return true;note(action==="advance"?"已提交推进请求；实际进度以项目状态为准。":action==="report"?"已提交综合报告请求；报告使用已保存发现，实际进度以项目状态为准。":"已保存");return true}catch(error){note(error.message);return false}finally{controlling=false;updateControls()}}
 for(const b of document.querySelectorAll("[data-tab]"))b.onclick=()=>{tab=b.dataset.tab;selectTab();render()};
 for(const b of document.querySelectorAll("[data-action]"))b.onclick=async()=>{
   const action=b.dataset.action;
-  if(action==="steer"||action==="extend")openControl(action);
+  if(action==="report"){
+    tab="brief";selectTab();
+    if(snapshot.brief?.reports?.some(item=>item.current)){render();return;}
+    if(!snapshot.native_execution){note("请先在探索设置中保存与本课题一致的执行方式。");return;}
+    await control("report");
+  }else if(action==="steer"||action==="extend")openControl(action);
   else if(action==="advance"){
     if(!snapshot.native_execution)await openExecution(true);
     else await control(action);
@@ -89,7 +94,7 @@ async function openMemory(){const form=$("memory-form");form.reset();$("memory-e
 $("memory-form").elements.origin_name.onchange=memoryOrigin;$("memory-form").elements.post_id.onchange=memoryPreview;$("close-memory").onclick=()=>$("memory-dialog").close();
 $("memory-form").onsubmit=async event=>{event.preventDefault();const submit=event.target.querySelector('[type="submit"]');submit.disabled=true;try{const data=Object.fromEntries(new FormData(event.target));if(!data.origin_name||!data.post_id)throw Error("请选择已有发现的来源课题。");await api(`/api/project/${selected}/link-memory`,data);$("memory-dialog").close();await load();note("已保存带出处与适用条件的引用。")}catch(error){$("memory-error").textContent=error.message}finally{submit.disabled=false}};
 
-function updateControls(){if(!snapshot)return;const switching=snapshot.name!==selected;const exhausted=snapshot.rounds.length>=snapshot.max_rounds&&["completed","cancelled"].includes(snapshot.rounds.at(-1)?.status);$("round-limit").hidden=!exhausted||Boolean(snapshot.evaluation_binding);$("add-source").disabled=controlling||switching||Boolean(snapshot.evaluation_binding);for(const button of document.querySelectorAll("[data-action]"))button.disabled=controlling||switching||(button.dataset.action==="extend"&&Boolean(snapshot.evaluation_binding))||(button.dataset.action==="advance"&&(Boolean(snapshot.evaluation_binding)||exhausted||snapshot.status!=="active"));$("execution-settings").disabled=controlling||switching||Boolean(snapshot.evaluation_binding);for(const button of document.querySelectorAll("#content button"))button.disabled=controlling||switching||(button.dataset.mutable==="true"&&Boolean(snapshot.evaluation_binding))}
+function updateControls(){if(!snapshot)return;const switching=snapshot.name!==selected;const exhausted=snapshot.rounds.length>=snapshot.max_rounds&&["completed","cancelled"].includes(snapshot.rounds.at(-1)?.status);$("round-limit").hidden=!exhausted||Boolean(snapshot.evaluation_binding);$("add-source").disabled=controlling||switching||Boolean(snapshot.evaluation_binding);for(const button of document.querySelectorAll("[data-action]"))button.disabled=controlling||switching||(button.dataset.action==="report"&&(!snapshot.rounds.length||snapshot.rounds.at(-1).status!=="completed"||snapshot.rounds.at(-1).question_revision!==snapshot.question_revisions.at(-1).number||snapshot.status!=="active"||Boolean(snapshot.evaluation_binding)))||(button.dataset.action==="extend"&&Boolean(snapshot.evaluation_binding))||(button.dataset.action==="advance"&&(Boolean(snapshot.evaluation_binding)||exhausted||snapshot.status!=="active"));$("execution-settings").disabled=controlling||switching||Boolean(snapshot.evaluation_binding);for(const button of document.querySelectorAll("#content button"))button.disabled=controlling||switching||(button.dataset.mutable==="true"&&Boolean(snapshot.evaluation_binding))}
 window.addEventListener('hashchange',()=>{const next=location.hash.slice(1)||projectIndex[0]?.name;if(next&&next!==selected){if(!/^[a-z0-9_]{1,24}$/.test(next)){note('项目名称格式不正确。');return}selected=next;load()}});
 
 function selectTab(){for(const x of document.querySelectorAll("[data-tab]")){
@@ -222,3 +227,31 @@ $("source-dialog").addEventListener("close",sourceCount);
 selectTab();
 
 $("guide-demo").onclick=()=>{$("guide-dialog").close();openCreate("demo")};
+
+function renderStageReport(out){
+  const entries=snapshot.brief?.reports||[],latest=[...entries].reverse().find(item=>item.current);
+  const button=document.querySelector('[data-action="report"]');
+  if(button)button.textContent=latest?"查看综合报告":"生成综合报告";
+  if(latest){
+    const report=latest.content,a=card(report.title);a.classList.add("stage-report");
+    a.append(tagNode(snapshot.record_kind==="mechanical_fixture"?"机械演示":"综合判断 · 保留限制"),node("p",report.overview));
+    for(const [field,title,textKey,detailKey] of [["conclusions","阶段判断","claim","caveat"],["disagreements","竞争解释与分歧","issue","implication"],["next_steps","建议的下一步","action","reason"]]){
+      if(!report[field].length)continue;
+      a.append(node("h3",title));
+      for(const item of report[field]){
+        const part=node("section",undefined,"brief-item");part.append(node("p",item[textKey]),node("p",(field==="conclusions"?"适用限制：":"")+item[detailKey],"small"));
+        for(const id of item.basis)part.append(findingLink(id,"核对依据"));
+        a.append(part);
+      }
+    }
+    a.append(node("h3","仍待弄清楚"));
+    for(const text of report.unknowns)a.append(node("p",text));
+    a.append(node("p","这份综合判断来自已有发现。原始异议、来源核查与未决问题继续保留在下方；报告不增加外部证据。","small"));
+    if(report.omitted_finding_ids?.length)a.append(node("p","另有 "+report.omitted_finding_ids.length+" 条发现未纳入本次模型上下文，可在完整记录中检查。","small"));
+    out.append(a);
+  }
+  const historical=entries.filter(item=>!item.current);
+  if(historical.length){const a=card("历史综合报告 · 沿用前复查");for(const item of historical.slice(-3)){
+    const el=node("details");el.append(node("summary",item.content.title),node("p","问题、材料、方向或认识状态已有变化，这份报告不作为当前结论。","small"),node("p",item.content.overview));a.append(el);
+  }out.append(a);}
+}
