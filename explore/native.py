@@ -205,7 +205,8 @@ class NativeService:
             name = data.get("name") or "q_" + uuid.uuid4().hex[:16]
             project = Project.create(self.client, name, question=question, mode=data.get("mode", "collaborative"),
                                      participants=data.get("participants", 3), max_concurrency=data.get("concurrency", 2),
-                                     max_invocations_per_round=max(16, data.get("participants", 3) * 4 + 4))
+                                     max_invocations_per_round=(max(16, data.get("participants", 3) * 4 + 4)
+                                                               if type(data.get("participants", 3)) is int else 16))
             if profile:
                 self.save_profile(project, profile)
             return project.status()
