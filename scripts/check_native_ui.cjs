@@ -42,6 +42,7 @@ assert len(p.file.read()[0]["calls"]) == 1
     await page.waitForFunction(() => Boolean(localStorage.getItem('moltbook_api_key')));
     await page.goto(origin + '/api/v1/exploreos/ui');
     await page.getByRole('button', {name: '＋ 新建探索', exact: true}).click();
+    assert.equal(await page.locator('#create-form [name="backend"]').inputValue(), 'pi');
     await page.locator('#create-form [name="backend"]').selectOption('simulated');
     await page.locator('[name="question"]').fill('怎样在改变问题后继续保留有用的分歧？');
     await page.getByRole('button', {name: '创建项目', exact: true}).click();
@@ -58,6 +59,10 @@ assert len(p.file.read()[0]["calls"]) == 1
     assert((await page.locator('#content').innerText()).includes('1: 初次访谈不能代表所有使用者。'));
     await page.getByRole('tab', {name: '发现与分歧', exact: true}).click();
     await page.getByRole('button', {name: '推进一轮', exact: true}).click();
+    await page.waitForFunction(() => document.querySelectorAll('#content article').length === 3);
+    await page.getByRole('button', {name: '生成综合报告', exact: true}).click();
+    await page.getByRole('heading', {name: '机械演示报告 · 用于检查成果流程', exact: true}).waitFor();
+    await page.getByRole('button', {name: '核对依据', exact: true}).first().click();
     await page.waitForFunction(() => document.querySelectorAll('#content article').length === 3);
     await page.locator('.project-controls summary').click();
     await page.getByRole('button', {name: '暂停', exact: true}).click();
@@ -173,6 +178,14 @@ assert len(p.file.read()[0]["calls"]) == 1
     await page.locator('#project-search').fill('no-matching-project-827456');
     await page.getByText('没有匹配的问题，试试其他关键词。', {exact: true}).waitFor();
     await page.locator('#project-search').fill('');
+    await page.getByRole('button', {name: '＋ 新建探索', exact: true}).click();
+    assert.equal(await page.locator('#create-form [name="backend"]').inputValue(), 'pi');
+    await page.locator('#create-form [name="question"]').fill('真实问题不得自动变成演示结果');
+    await page.locator('#create-form [type="submit"]').click();
+    await page.getByRole('heading', {name: '真实问题不得自动变成演示结果', exact: true}).waitFor();
+    await page.locator('#provider-status').waitFor({state: 'visible'});
+    assert(await page.locator('[data-action="advance"]').isDisabled());
+    assert((await page.locator('#provider-status').innerText()).includes('DEEPSEEK_API_KEY'));
     assert.deepEqual(errors, []);
     console.log('PASS: question-only creation, saved zero-model mode, material ingestion, focus/extra-round forms, readable brief download/reopen, qualified memory, legacy failure recovery, native workshop entry guided example, accessible tabs, search, persistent themes and mobile layout (zero model calls).');
   } finally {

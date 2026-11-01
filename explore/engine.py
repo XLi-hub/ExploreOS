@@ -12,7 +12,7 @@ import uuid
 from scripts.cloud.runtime import ROOT
 from .bootstrap import launch
 from .memory import Memory, select_shared_memory
-from . import assessments, cross_memory, policy, reviews
+from . import assessments, cross_memory, policy, reviews, reports
 from .subagents import read_receipt, terminal as plugin_terminal
 from .models import REAL_BACKENDS, parse_json_output
 from .store import Conflict, JsonFile, atomic_local
@@ -370,6 +370,8 @@ class Project:
         return self.file.update("source-assessment:" + assessment_id + ":" + assessments.digest(supplied), change)
 
     def request_for(self, state, actor, phase, round_record):
+        if phase == "report":
+            return reports.request(self, state, actor, round_record)
         semantic_policy = policy.normalize(state.get("semantic_policy"))
         review_context = None
         if phase == "reflect":
@@ -419,7 +421,8 @@ class Project:
         if state["mode"] == "collaborative":
             for call in state["calls"].values():
                 if call["actor"] == actor and call["status"] == "completed":
-                    previously_read.update(p["id"] for p in call.get("request", {}).get("peers", []))
+                    previously_read.update(p["id"] for p in call.get("request", {}).get("peers", [])
+                                           if p.get("actor") != actor)
         else:
             previously_read.clear()
         recalled_links = {link for note in memory.get("recalled_notes", []) for link in note.get("peer_posts", [])}
@@ -464,6 +467,11 @@ class Project:
             if not semantic_policy["direction_changes"]:
                 request["contract"]["change"] = "null；本次固定方向与成员，保留讨论和发现但不应用重组"
         request["instructions"] = "严格输出JSON对象，键与contract一致，每个文字字段最多100字。视角提示可自行拒绝或修订，不是固定研究分工。不得编造来源或同伴ID，不用多数同意代替证据。方向与分工由你根据证据判断，程序不要求必定改向。source_assessments为署名的来源支持判断，不是新证据或事实认证；检查其范围、问题版本及分歧。"
+        if (state.get("native_execution", {}).get("backend") in REAL_BACKENDS
+                and not state.get("evaluation_binding") and phase == "reflect"):
+            request["response_profile"] = "product"
+            request["instructions"] = request["instructions"].replace(
+                "每个文字字段最多100字", "finding可用500字展开依据与推理，summary最多150字，unresolved最多250字，其他文字字段最多100字")
         omitted = {"peers": 0, "shared_memory": 0, "private_notes": 0, "review_candidates": 0, "cross_project_memory": 0,
                    "review_challenges": 0}
         request["context_omissions"] = omitted
@@ -499,6 +507,8 @@ class Project:
         return request
 
     def validate(self, output, request):
+        if request["phase"] == "report":
+            return reports.validate(output, request)
         if not isinstance(output, dict):
             raise ValueError("Participant returned a non-object")
         phase = request["phase"]
@@ -650,7 +660,8 @@ class Project:
                                    "question_revision": request["question_revision"]})
             state["agents"][actor]["cursor"] = max(state["agents"][actor]["cursor"], request.get("index_cursor", 0))
             state["agents"][actor]["read_posts"] = sorted(set(state["agents"][actor].get("read_posts", [])) |
-                {post["id"] for post in request["peers"]} | set(request.get("previously_read_peer_ids", [])))
+                {post["id"] for post in request["peers"] if post.get("actor") != actor} |
+                set(request.get("previously_read_peer_ids", [])))
             state["agents"][actor]["read_posts"] = sorted(set(state["agents"][actor]["read_posts"]) | set(request.get("contribution_views", {})))
             if phase == "propose" and state["agents"][actor]["direction"] is None:
                 direction_id = "direction:" + actor
@@ -793,9 +804,11 @@ class Project:
                 failure=failure)
             raise
 
-    def advance(self, backend, *, trigger=None, evaluation_case=None):
+    def advance(self, backend, *, trigger=None, evaluation_case=None, report_only=False):
         observed, _ = self.file.read()
         binding = observed.get("evaluation_binding")
+        if report_only and binding:
+            raise ValueError("Frozen evaluations retain their original aggregation and call ceilings")
         if binding:
             if evaluation_case != binding:
                 raise ValueError("Advance a frozen case through its evaluation campaign")
@@ -821,6 +834,8 @@ class Project:
             return True
         self.file.update("controller:" + owner, own)
         try:
+            if report_only:
+                return self._report_owned(backend, owner)
             return self._advance_owned(backend, owner, trigger=trigger)
         finally:
             def release(state):
@@ -828,6 +843,44 @@ class Project:
                     state.pop("controller", None)
                 return True
             self.file.update("release:" + owner, release)
+
+    def generate_report(self, backend):
+        return self.advance(backend, report_only=True)
+
+    def _report_owned(self, backend, owner):
+        state, _ = self.file.read()
+        if (state["status"] != "active" or not state["rounds"]
+                or state["rounds"][-1]["status"] != "completed"):
+            raise ValueError("Generate a report after a completed round in an active project")
+        record = state["rounds"][-1]
+        if record["question_revision"] != len(state["question_revisions"]):
+            raise ValueError("Explore the changed question before generating its report")
+        attempts = [*state["calls"].values(), *state.get("retired_calls", {}).values()]
+        if {call["backend"] for call in attempts} != {backend.name}:
+            raise ValueError("Reports must use the project's existing execution backend")
+        actor = list(state["agents"])[(record["number"] - 1) % len(state["agents"])]
+        slot = f"r{record['number']}.report.{actor}"
+        prior = state["calls"].get(slot)
+        if prior and prior["status"] == "completed":
+            saved = self.call_details(prior)["request"]
+            if saved["report_basis_sha256"] != reports.fingerprint(state):
+                raise ValueError("The report is historical; complete a new round for changed inputs")
+            return prior["post_id"]
+        try:
+            return self.perform(actor, "report", record, backend, owner)
+        except Exception:
+            def block(current):
+                if current["status"] == "active":
+                    current["status"] = "blocked"
+                    current["last_errors"] = ["report_execution"]
+            self.file.update("report-blocked:" + owner, block)
+            raise
+        finally:
+            def finish(current):
+                if current["status"] == "cancelling":
+                    current["status"] = "paused"
+                    self.event(current, "report_cancelled", round=record["number"])
+            self.file.update("report-finished:" + owner, finish)
 
     def _advance_owned(self, backend, owner, *, trigger=None):
         def start(state):
@@ -1070,6 +1123,11 @@ class Project:
             lines.extend([f"- {assessment['target_post']}；{assessment['reviewer']}：{assessment['verdict']}（问题 v{assessment['question_revision']}）",
                           f"  - 范围：{assessment['scope']}；理由：{assessment['reason']}；记录：{assessment['id']}",
                           f"  - 核查依据：{assessment['basis_sha256']}；判断不自动验证主张或消除异议。"])
+        for item in posts:
+            if item["phase"] == "report":
+                content = json.loads(item["post"]["content"])
+                lines.extend(["", reports.markdown(content, current=(
+                    content.get("report_basis_sha256") == reports.fingerprint(state)))])
         lines.extend(["", "## 运行与变更", "", f"已完成调用：{sum(c['status']=='completed' for c in state['calls'].values())}/{len(state['calls'])}",
                       f"已应用方向/成员变更：{len(state['direction_history'])}；待确认：{sum(c['status']=='pending' for c in state['changes'].values())}；过期未生效：{sum(c['status']=='stale' for c in state['changes'].values())}",
                       f"保留的历史失败尝试：{len(state.get('retired_calls',{}))}；重试仍计入调用限额与费用预留。",

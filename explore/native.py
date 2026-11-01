@@ -150,7 +150,7 @@ class NativeService:
             output.write(text)
         return project.add_source(destination, title.strip())
 
-    def advance(self, project, data):
+    def advance(self, project, data, *, report_only=False):
         saved = project.file.read()[0].get("native_execution") or {}
         if saved and data.get("backend", saved["backend"]) != saved["backend"]:
             raise ValueError("Execution differs from this project's saved exploration settings")
@@ -171,7 +171,10 @@ class NativeService:
                     raise RuntimeError("Current runtime has no DEEPSEEK_API_KEY; ClawInstitute login credentials are separate")
                 gateway = Gateway(key, session_budget(self.client, limit=data.get("budget_cny")))
                 adapter = {"pi": PiBackend, "claude": ClaudeBackend, "pi-subagents": SubagentsBackend}[backend](ROOT, gateway)
-            project.advance(adapter)
+            if report_only:
+                project.generate_report(adapter)
+            else:
+                project.advance(adapter)
             project.file.update("native-done:" + os.urandom(12).hex(), lambda s: s.pop("runtime_observation", None))
         except Exception as error:
             def record(state):
@@ -201,7 +204,9 @@ class NativeService:
             profile = self.validate_profile(data["execution"]) if "execution" in data else None
             name = data.get("name") or "q_" + uuid.uuid4().hex[:16]
             project = Project.create(self.client, name, question=question, mode=data.get("mode", "collaborative"),
-                                     participants=data.get("participants", 3), max_concurrency=data.get("concurrency", 2))
+                                     participants=data.get("participants", 3), max_concurrency=data.get("concurrency", 2),
+                                     max_invocations_per_round=(max(16, data.get("participants", 3) * 4 + 4)
+                                                               if type(data.get("participants", 3)) is int else 16))
             if profile:
                 self.save_profile(project, profile)
             return project.status()
@@ -237,8 +242,8 @@ class NativeService:
             link(project, self.project(data["origin_name"]), data["post_id"], data["conditions"], data["reason"])
         elif action == "extend":
             project.extend(data.get("rounds", 1))
-        elif action == "advance":
-            return self.advance(project, data)
+        elif action in ("advance", "report"):
+            return self.advance(project, data, report_only=action == "report")
         elif action == "configure-execution":
             self.save_profile(project, data)
         else:

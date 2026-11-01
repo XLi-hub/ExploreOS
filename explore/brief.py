@@ -1,6 +1,9 @@
 """Readable, attributed projections of existing records; no model or truth inference."""
 
 
+from . import reports
+
+
 def build(view):
     revision = view["question_revisions"][-1]
     findings, historical, questions = [], [], []
@@ -47,7 +50,10 @@ def build(view):
         next_step = "可先添加相关材料，然后开始第一轮探索。"
     else:
         next_step = "检查未决问题和质疑，补充材料或调整关注点，再推进一轮。"
-    result = {"question": revision, "findings": findings, "historical": historical,
+    report_items = [{"post_id": post["id"], "content": post["content"],
+                     "current": post["content"].get("report_basis_sha256") == reports.fingerprint(view)}
+                    for post in view["posts"] if post["phase"] == "report"]
+    result = {"reports": report_items, "question": revision, "findings": findings, "historical": historical,
               "questions": questions, "changes": changes, "stale_reviews": stale_reviews, "next_step": next_step,
               "completed_rounds": sum(r["status"] == "completed" for r in rounds),
               "completed_calls": sum(c["status"] == "completed" for c in calls),
@@ -71,5 +77,7 @@ def build(view):
         lines.append(f"- {item['text']}{suffix} · 记录 {item['post_id']}")
     lines.extend(["", "## 下一步", "", next_step, "", "## 历史发现（沿用前须复查）", ""])
     lines.extend(f"- {item['text']} · 问题 v{item['question_revision']} · {item['status']} · 记录 {item['post_id']}" for item in historical)
+    for item in report_items:
+        lines.extend(["", reports.markdown(item["content"], current=item["current"])])
     result["markdown"] = "\n".join(lines) + "\n"
     return result

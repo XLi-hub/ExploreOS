@@ -26,10 +26,10 @@ def main():
     create.add_argument("--participants", type=int, default=3)
     create.add_argument("--concurrency", type=int, default=2)
     create.add_argument("--source", action="append", default=[], help="Explicitly allowed UTF-8 material path; repeat for more materials")
-    for name in ("advance", "status", "pause", "resume", "cancel", "reconcile", "export", "steer", "add-source", "memory", "reviews", "executions", "extend", "challenge", "retry", "source-audit", "assess-source", "link-memory"):
+    for name in ("advance", "report", "status", "pause", "resume", "cancel", "reconcile", "export", "steer", "add-source", "memory", "reviews", "executions", "extend", "challenge", "retry", "source-audit", "assess-source", "link-memory"):
         command = sub.add_parser(name)
         command.add_argument("name")
-        if name == "advance":
+        if name in ("advance", "report"):
             command.add_argument("--backend", choices=("simulated", "pi", "claude", "pi-subagents"), default="simulated")
             command.add_argument("--budget-cny", type=float, help="Explicit budget for first paid run; existing pools are never reset")
         if name == "steer":
@@ -72,17 +72,19 @@ def main():
         if directory.parent != (ROOT / ".research").resolve():
             raise ValueError("Project name must resolve directly below .research")
         project = Project(client, directory)
-        if args.command == "advance":
+        if args.command in ("advance", "report"):
             if args.backend in ("pi", "claude", "pi-subagents"):
                 key = model_key() or getpass.getpass("DeepSeek API key (hidden): ")
                 gateway = Gateway(key, session_budget(client, limit=args.budget_cny))
                 try:
                     backend = {"pi": PiBackend, "claude": ClaudeBackend, "pi-subagents": SubagentsBackend}[args.backend]
-                    project.advance(backend(ROOT, gateway))
+                    action = project.generate_report if args.command == "report" else project.advance
+                    action(backend(ROOT, gateway))
                 finally:
                     gateway.close()
             else:
-                project.advance(SimulatedBackend(project.file.read()[0]["scenario"]))
+                action = project.generate_report if args.command == "report" else project.advance
+                action(SimulatedBackend(project.file.read()[0]["scenario"]))
         elif args.command == "reconcile":
             project.reconcile(session_budget(client) if (ROOT / ".research/session-budget.json").exists() else None)
         elif args.command == "export":

@@ -12,7 +12,7 @@ function install(app) {
   const express=require(require.resolve('express',{paths:[packageRoot]}));
   const {requireAuth}=require(path.join(packageRoot,'src/middleware/auth.js'));
   const api=express.Router(),active=new Map();
-  const allowed=new Set(['pause','resume','cancel','steer','challenge','assess','reconcile','retry','extend','advance','add-source','link-memory','configure-execution']);
+  const allowed=new Set(['pause','resume','cancel','steer','challenge','assess','reconcile','retry','extend','advance','report','add-source','link-memory','configure-execution']);
   function headers(res){
     res.set('Cache-Control','no-store');res.set('X-Content-Type-Options','nosniff');
     res.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'none'");
@@ -70,10 +70,10 @@ function install(app) {
   api.post('/project/:name/:action',(req,res)=>{
     const {name,action}=req.params;
     if(!/^[a-z0-9_]{1,24}$/.test(name)||!allowed.has(action))return res.sendStatus(400);
-    if(action==='advance'&&!['simulated','pi','pi-subagents','claude'].includes(req.body?.backend||'simulated'))
+    if(['advance','report'].includes(action)&&!['simulated','pi','pi-subagents','claude'].includes(req.body?.backend||'simulated'))
       return res.status(400).json({error:'Choose a supported execution backend'});
-    if(action==='advance'&&active.has(name))return res.status(409).json({error:'An owned advance is already queued; inspect project state'});
-    run({action,name,data:req.body},res,action==='advance');
+    if(['advance','report'].includes(action)&&active.has(name))return res.status(409).json({error:'An owned exploration or report is already queued; inspect project state'});
+    run({action,name,data:req.body},res,['advance','report'].includes(action));
   });
   app.use('/api/v1/exploreos',api);
 }
