@@ -28,6 +28,8 @@ for await (const chunk of process.stdin) {
   if (Buffer.byteLength(input) > 100_000) throw new Error('Bounded invocation input exceeded');
 }
 const request = JSON.parse(input);
+const outputTokens = request.max_output_tokens ?? 900;
+if (![900, 3072, 4096].includes(outputTokens)) throw new Error("Unsupported owned output allowance");
 const endpoint = new URL(request.base_url);
 if (endpoint.protocol !== 'http:' || endpoint.hostname !== '127.0.0.1') throw new Error('Only loopback relay is allowed');
 const hostDir = resolve(request.host_dir);
@@ -74,7 +76,7 @@ try {
   cancelEvent = delegation.SUBAGENT_DELEGATION_CANCEL_EVENT;
   const provider = 'exploreos-relay';
   const modelConfig = { id: 'deepseek-flash', name: 'Authorized relay model', api: 'anthropic-messages',
-    reasoning: false, input: ['text'], contextWindow: 32_000, maxTokens: 900,
+    reasoning: false, input: ['text'], contextWindow: 32_000, maxTokens: outputTokens,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
   const runtime = await sdk.ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null,
     modelsStorePath: resolve(hostDir, 'model-cache.json'), allowModelNetwork: false, refreshOnCreate: false });
@@ -83,7 +85,7 @@ try {
       if (receipt.provider_requests >= 1) throw new Error('Only one supplier request per leaf');
       save({ provider_requests: receipt.provider_requests + 1 });
       return stream(model, context, { ...options, apiKey: request.gateway_token, maxRetries: 0,
-        maxTokens: 900, thinkingEnabled: false, cacheRetention: 'none', timeoutMs: 60_000 });
+        maxTokens: outputTokens, thinkingEnabled: false, cacheRetention: 'none', timeoutMs: 60_000 });
     } });
   // The child factory reads these same isolated settings; nothing comes from user config.
   fs.writeFileSync(resolve(hostDir, 'settings.json'), JSON.stringify({
