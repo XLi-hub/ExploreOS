@@ -32,6 +32,11 @@ budget=session_budget(service.client,limit=5)
 budget.admit("container-fixture-no-supplier",100,100,{"qualification":"Synthetic unknown reservation; no supplier contacted"})
 expected={"state_sha256":hashlib.sha256(json.dumps(view,sort_keys=True).encode()).hexdigest(),"budget":service.budget_view()}
 assert expected["budget"]["unknown_requests"] == 1
+saved=service.handle({"action":"configure-provider","data":{"operation":"save","key":"sk-container-fixture-not-a-real-key","expected_version":None}})
+assert saved["credential"] == "configured"
+assert service.budget_view() == expected["budget"]
+assert "sk-container-fixture-not-a-real-key" not in json.dumps(saved)
+expected["provider_version"]=saved["credential_version"]
 Path(".research/container-acceptance.json").write_text(json.dumps(expected))
 print("PASS: fresh installation, native creation/materials/round/brief/export and synthetic unknown-budget fixture (no supplier).")
 '''
@@ -47,7 +52,14 @@ view=service.state(service.project("container_acceptance"))
 assert hashlib.sha256(json.dumps(view,sort_keys=True).encode()).hexdigest() == expected["state_sha256"]
 assert service.budget_view() == expected["budget"]
 assert view["native_execution"] == {"backend":"simulated"}
-assert service.runtime()["credential"] == "missing"
+provider=service.runtime()
+if expect_saved_provider:
+    assert provider["credential"] == "configured"
+    assert provider["credential_source"] == "local"
+    assert provider["credential_version"] == expected["provider_version"]
+else:
+    assert provider["credential"] == "missing"
+    assert provider["credential_source"] == "missing"
 print("PASS: replacement preserves exact project view, sources, posts, brief, execution profile and unknown exposure; no new calls.")
 '''
 
@@ -114,13 +126,13 @@ def main():
         run("run", "--rm", *mounts(), args.image, ".venv/bin/python", "scripts/cloud/backup.py", "create", archive)
         run("rm", container)
         start()
-        execute(VERIFY)
+        execute("expect_saved_provider = True\n" + VERIFY)
         run("stop", "--time", "90", container)
         run("rm", container)
         active_volumes = volumes[3:]
         run("run", "--rm", *mounts(), args.image, ".venv/bin/python", "scripts/cloud/backup.py", "restore", archive)
         start()
-        execute(VERIFY)
+        execute("expect_saved_provider = False\n" + VERIFY)
         run("stop", "--time", "90", container)
         print("PASS: private cold backup restores into empty container volumes with identical project and budget exposure.", flush=True)
         print("PASS: non-root product image, exclusive supervision, graceful stop and fresh-container data continuity.", flush=True)
