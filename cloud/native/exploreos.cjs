@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {spawn} = require('node:child_process');
+const {timingSafeEqual} = require('node:crypto');
 
 function install(app) {
   const root=process.env.EXPLOREOS_ROOT, python=process.env.EXPLOREOS_PYTHON;
@@ -60,7 +61,20 @@ function install(app) {
     });
   }
   api.get('/projects',(req,res)=>run({action:'projects'},res));
-  api.get('/runtime',(req,res)=>run({action:'runtime'},res));
+  function instanceOwner(req){
+    const authorization=req.headers.authorization||'';
+    if(!authorization.startsWith('Bearer '))return false;
+    try{
+      const expected=Buffer.from(fs.readFileSync(path.join(root,'.runtime/service/home/token'),'utf8').trim());
+      const supplied=Buffer.from(authorization.slice(7));
+      return expected.length>0&&expected.length===supplied.length&&timingSafeEqual(expected,supplied);
+    }catch{return false;}
+  }
+  api.get('/runtime',(req,res)=>run({action:'runtime',owner_capability:instanceOwner(req)},res));
+  api.post('/provider',(req,res)=>{
+    if(!instanceOwner(req))return res.status(403).json({error:'The instance login token is required to change provider configuration'});
+    run({action:'configure-provider',data:req.body},res);
+  });
   api.post('/projects',(req,res)=>run({action:'create',data:req.body},res));
   api.get('/project/:name/audit/:target',(req,res)=>run({action:'audit',name:req.params.name,target:req.params.target},res));
   api.get('/project/:name/:view',(req,res)=>{
