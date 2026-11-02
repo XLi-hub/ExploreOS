@@ -266,10 +266,54 @@ function renderProviderStatus(){
   if(el.hidden)return;
   if(!runtimeInfo){el.textContent="暂时无法读取真实模型配置。请刷新确认；问题和材料仍可保存。";return;}
   const messages=["真实探索尚未就绪。问题和材料可以保存，执行前请完成模型配置。"];
-  if(runtimeInfo.credential!=="configured")messages.push("在安装主机的私有 .env 配置 DEEPSEEK_API_KEY，运行 docker compose up --no-build -d，然后刷新。模型密钥不填入登录页。");
+  if(runtimeInfo.credential!=="configured")messages.push("请通过「模型设置」保存 DeepSeek API 密钥；也可由安装主机的 DEEPSEEK_API_KEY 提供。模型密钥不填入登录页。");
   if(snapshot.native_execution?.backend==="pi"&&!runtimeInfo.pi_ready)messages.push("Pi 执行依赖尚未就绪；源码安装请运行 bash scripts/cloud/setup_pi.sh。");
   if(runtimeInfo.network==="not_allowed_at_startup")messages.push("本环境的启动网络策略尚未允许模型服务，需要先恢复供应商网络访问。");
   messages.push("需要体验流程时，请在使用指南中明确打开零付费示例。");
   el.textContent=messages.join("\n");
+  const setup=node("button","打开模型设置");setup.onclick=openProvider;el.append(node("br"),setup);
 }
 readRuntime();
+
+let providerVersion=null,providerSaving=false;
+function providerSummary(){
+  const form=$("provider-form"),canManage=runtimeInfo?.can_manage_provider===true,editable=runtimeInfo?.credential_editable===true;
+  const source=runtimeInfo?.credential_source;
+  const sources={local:"本机私有配置 · 已保存",environment:"由环境变量提供 · 本页只读",legacy:"由原私有配置文件提供",missing:"尚未配置模型密钥",invalid:"私有配置文件权限或格式异常，请在安装主机修复"};
+  $("provider-summary").textContent=runtimeInfo?(sources[source]||"配置状态待核对")+"\n保存状态不代表供应商网络或权限已验证。"+(!canManage?"\n需要实例登录令牌才能修改配置。":""):"无法读取模型配置，请返回后重试。";
+  const budget=runtimeInfo?.budget;
+  $("provider-budget").textContent=budget?"共享预算 ¥"+budget.limit_cny+"，剩余准入额度 ¥"+budget.remaining_cny.toFixed(4)+"，请求 "+budget.requests+"/"+budget.max_calls+"。更换密钥不重置预算或未知请求。":"尚未创建共享预算；在新建课题或探索设置中明确设置，开始真实执行时才创建。保存密钥不产生模型费用。";
+  $("provider-fields").hidden=!canManage||!editable;
+  form.elements.api_key.disabled=!canManage||!editable||providerSaving;
+  $("save-provider").hidden=!canManage||!editable;
+  $("save-provider").disabled=providerSaving;
+  $("remove-provider").hidden=!canManage||source!=="local";
+  $("remove-provider").disabled=providerSaving;
+  $("close-provider").disabled=providerSaving;
+}
+async function openProvider(){
+  $("provider-form").reset();$("provider-error").textContent="";
+  $("provider-dialog").showModal();await readRuntime();
+  providerVersion=runtimeInfo?.credential_version??null;providerSummary();
+  if(!$("provider-fields").hidden)$("provider-form").elements.api_key.focus();
+}
+async function changeProvider(operation){
+  if(providerSaving)return;
+  const key=$("provider-form").elements.api_key.value;
+  if(operation==="save"&&!key.trim()){$("provider-error").textContent="请输入要保存的 DeepSeek API 密钥。";return;}
+  providerSaving=true;providerSummary();$("provider-error").textContent="";
+  try{
+    await api("/api/provider",{operation,expected_version:providerVersion,...(operation==="save"?{key}:{})});
+    $("provider-form").reset();await readRuntime();providerVersion=runtimeInfo?.credential_version??null;
+    note(operation==="save"?"模型配置已保存；尚未发起供应商请求。准备好问题和预算后，再开始真实探索。":"本页保存的密钥已移除。环境变量或原私有配置如仍存在，会继续提供模型凭据。");
+  }catch(error){
+    $("provider-error").textContent=error.message+"。请核对配置状态后再操作。";
+    await readRuntime();providerVersion=runtimeInfo?.credential_version??null;
+  }finally{providerSaving=false;providerSummary();}
+}
+$("open-provider").onclick=openProvider;
+$("close-provider").onclick=()=>$("provider-dialog").close();
+$("provider-dialog").addEventListener("close",()=>{$("provider-form").reset();$("provider-error").textContent="";});
+$("provider-dialog").addEventListener("cancel",event=>{if(providerSaving)event.preventDefault();});
+$("provider-form").onsubmit=event=>{event.preventDefault();changeProvider("save");};
+$("remove-provider").onclick=()=>changeProvider("remove");
