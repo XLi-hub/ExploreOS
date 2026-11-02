@@ -15,7 +15,7 @@ docker compose up --build -d
 docker compose ps
 ~~~
 
-默认可体验零付费演示。在本机编辑私有 `.env` 的 `DEEPSEEK_API_KEY` 后，执行 `docker compose up -d` 更新容器，再在探索界面明确选择真实探索与共享预算。已有预算不会通过重建、改向或追加轮次增加。
+登录后可以在页面右上角「模型设置」保存 DeepSeek 密钥，再明确选择真实探索与共享预算。该配置保存在 service 卷的私有文件中，不回显，保存不调用模型；见 [模型设置](provider-setup.md)。原本机私有 `.env` 的 `DEEPSEEK_API_KEY` 仍支持，修改后执行 `docker compose up -d` 更新容器，环境变量提供时页面只读。已有预算不会通过重建、改向或追加轮次增加。
 
 打开 **http://127.0.0.1:3001/api/v1/exploreos/ui**，按页面链接使用原 ClawInstitute 登录。初始登录令牌可在运行主机的私人终端读取，再粘贴到原登录页：
 
@@ -23,7 +23,7 @@ docker compose ps
 docker compose exec -T exploreos cat .runtime/service/home/token
 ~~~
 
-这是协作服务的本地登录令牌，模型密钥单独放在 `.env`，不填入登录页。登录后，新建探索、填写问题、选择真实或演示、按需添加材料，再推进一轮。阶段成果支持来源追溯、改向、简报下载与接续。
+这是协作服务的本地登录令牌，模型密钥在登录后的专用「模型设置」中配置，或由 `.env` 提供，不填入登录页。登录后，新建探索、填写问题、选择真实或演示、按需添加材料，再推进一轮。阶段成果支持来源追溯、改向、简报下载与接续。
 
 容器内前端监听容器网卡，Compose 仅将端口发布到主机 loopback；源码安装默认仍只监听本机。部署在自己的服务器时，可通过 SSH 保持同样的私有访问入口：
 
