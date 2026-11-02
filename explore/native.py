@@ -8,7 +8,7 @@ import sys
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from .credentials import model_key
+from .credentials import model_key, public_configuration, configure as configure_provider
 from scripts.cloud.runtime import ROOT
 from .engine import Project
 from .models import SimulatedBackend
@@ -60,7 +60,11 @@ class NativeService:
                 policy = "not_allowed_at_startup"
         except (OSError, ValueError):
             pass
-        return {"credential": credential, "pi_ready": pi_ready, "budget": self.budget_view(),
+        try:
+            provider = public_configuration()
+        except (OSError, RuntimeError):
+            provider = {"credential_source": "invalid", "credential_version": None, "credential_editable": False}
+        return {**provider, "credential": credential, "pi_ready": pi_ready, "budget": self.budget_view(),
                 "network": policy, "model": "DeepSeek", "network_checked": False}
 
     def validate_profile(self, data):
@@ -196,6 +200,9 @@ class NativeService:
         if action == "projects":
             return self.projects()
         if action == "runtime":
+            return {**self.runtime(), "can_manage_provider": request.get("owner_capability") is True}
+        if action == "configure-provider":
+            configure_provider(data)
             return self.runtime()
         if action == "create":
             question = data.get("question", "")
