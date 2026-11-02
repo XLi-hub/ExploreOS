@@ -32,7 +32,7 @@ DIMENSIONS = ("question_clarity", "explanation_coverage", "counterexamples", "ev
 
 
 def runtime_manifest():
-    paths = ["explore/engine.py", "explore/models.py", "explore/memory.py", "explore/reviews.py",
+    paths = ["explore/credentials.py", "explore/engine.py", "explore/models.py", "explore/memory.py", "explore/reviews.py",
              "explore/store.py", "explore/policy.py", "explore/bootstrap.py", "explore/cross_memory.py",
              "explore/subagents.py", "explore/reports.py", "explore/evaluation.py", "scripts/pi_runner.mjs", "scripts/subagents_runner.mjs",
              "cloud/versions.json", "cloud/package-lock.json", "cloud/pi/package-lock.json", "cloud/subagents/package-lock.json"]
