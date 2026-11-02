@@ -106,6 +106,7 @@ class CredentialTests(unittest.TestCase):
             self.save()
         self.assertEqual(outside.read_text(), KEY_A)
         target.unlink()
+        (target.parent / "provider.lock").unlink(missing_ok=True)
         target.parent.rmdir()
         target.parent.symlink_to(self.root)
         with self.assertRaises(RuntimeError):
