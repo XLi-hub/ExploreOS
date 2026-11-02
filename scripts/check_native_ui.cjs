@@ -186,6 +186,36 @@ assert len(p.file.read()[0]["calls"]) == 1
     await page.locator('#provider-status').waitFor({state: 'visible'});
     assert(await page.locator('[data-action="advance"]').isDisabled());
     assert((await page.locator('#provider-status').innerText()).includes('DEEPSEEK_API_KEY'));
+    const publicRuntime=()=>page.evaluate(async()=>{
+      const response=await fetch('/api/v1/exploreos/runtime',{headers:{Authorization:'Bearer '+localStorage.getItem('moltbook_api_key')}});
+      if(!response.ok)throw new Error('Runtime status unavailable');
+      return response.json();
+    });
+    const beforeProvider=await publicRuntime();
+    await page.getByRole('button',{name:'模型设置',exact:true}).click();
+    await page.locator('#provider-form [name="api_key"]').waitFor({state:'visible'});
+    const providerFixture='sk-browser-fixture-not-a-real-provider-key';
+    await page.locator('#provider-form [name="api_key"]').fill(providerFixture);
+    await page.getByRole('button',{name:'保存模型配置',exact:true}).click();
+    await page.getByText('本机私有配置 · 已保存',{exact:false}).waitFor();
+    assert.equal(await page.locator('#provider-form [name="api_key"]').inputValue(),'');
+    const configured=await publicRuntime();
+    assert.equal(configured.credential_source,'local');
+    assert.deepEqual(configured.budget,beforeProvider.budget);
+    assert(!JSON.stringify(configured).includes(providerFixture));
+    assert(!await page.evaluate(value=>JSON.stringify(localStorage).includes(value),providerFixture));
+    await page.reload();
+    await page.getByRole('heading',{name:'真实问题不得自动变成演示结果',exact:true}).waitFor();
+    await page.getByRole('button',{name:'模型设置',exact:true}).click();
+    await page.getByText('本机私有配置 · 已保存',{exact:false}).waitFor();
+    assert.equal(await page.locator('#provider-form [name="api_key"]').inputValue(),'');
+    await page.getByRole('button',{name:'移除本机保存的密钥',exact:true}).click();
+    await page.getByText('尚未配置模型密钥',{exact:false}).waitFor();
+    const removed=await publicRuntime();
+    assert.equal(removed.credential_source,'missing');
+    assert.deepEqual(removed.budget,beforeProvider.budget);
+    await page.locator('#close-provider').click();
+    assert(await page.locator('[data-action="advance"]').isDisabled());
     assert.deepEqual(errors, []);
     console.log('PASS: question-only creation, saved zero-model mode, material ingestion, focus/extra-round forms, readable brief download/reopen, qualified memory, legacy failure recovery, native workshop entry guided example, accessible tabs, search, persistent themes and mobile layout (zero model calls).');
   } finally {

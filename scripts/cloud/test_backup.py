@@ -34,6 +34,7 @@ class BackupTests(unittest.TestCase):
         self.write(".runtime/service/home/token", "fake-local-service-token")
         self.write(".runtime/secrets/deepseek-api-key", "fake-model-key-must-stay-out")
         self.write(".runtime/service/server.log", "private log not collected")
+        self.write(".runtime/service/private/provider.json", '{"api_key":"fake-ui-model-key-must-stay-out"}')
         self.write(".runtime/real-evaluation-readiness.json", '{"cases":168}')
         (self.source / ".runtime/service/db/empty_directory").mkdir()
         self.archive = self.base / "private.tar.gz"
@@ -59,6 +60,8 @@ class BackupTests(unittest.TestCase):
         self.assertTrue((self.target / ".runtime/service/db/empty_directory").is_dir())
         self.assertFalse((self.target / ".runtime/secrets/deepseek-api-key").exists())
         self.assertFalse((self.target / ".runtime/service/server.log").exists())
+        self.assertFalse((self.target / ".runtime/service/private/provider.json").exists())
+        self.assertFalse(any("provider.json" in record["path"] for record in manifest["records"]))
         self.assertFalse((self.target / ".runtime/service/process.json").exists())
 
     def test_running_service_and_existing_destination_are_refused(self):

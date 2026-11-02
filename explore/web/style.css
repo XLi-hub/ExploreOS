@@ -167,3 +167,8 @@ td, th { text-align: left; padding: 10px; border-bottom: 1px solid var(--line); 
 }
 @media (max-width: 390px) { .brand { font-size: 20px; gap: 5px; } .sidebar-tools { right: 12px; } .sidebar-tools button { font-size: 10px; padding: 6px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+
+.header-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+#provider-summary,#provider-error,#provider-status{white-space:pre-wrap;overflow-wrap:anywhere}
+#provider-error{color:#b05c3d}#provider-status button{margin-top:12px}
+@media(max-width:800px){.header-actions{flex-direction:column;align-items:stretch;flex-shrink:0}}
